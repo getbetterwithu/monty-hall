@@ -1,0 +1,1767 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>몬티홀 문제 확률 실험실 — TV 쇼 무대 에디션</title>
+  <!-- Firebase SDK (v9 compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(23, 32, 54, 0.88);
+      --card-border: rgba(255, 255, 255, 0.12);
+      --primary: #6366f1;
+      --primary-glow: rgba(99, 102, 241, 0.4);
+      --accent-gold: #f59e0b;
+      --accent-gold-glow: rgba(245, 158, 11, 0.5);
+      --success: #10b981;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --stage-light: radial-gradient(circle at 50% 25%, rgba(99, 102, 241, 0.25) 0%, rgba(11, 15, 25, 0) 70%);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", sans-serif;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image: var(--stage-light);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      transition: background-image 0.4s ease;
+    }
+
+    /* Stage Dynamic Light FX */
+    body.stage-win {
+      background-image: radial-gradient(circle at 50% 30%, rgba(245, 158, 11, 0.4) 0%, rgba(11, 15, 25, 0) 75%);
+    }
+    body.stage-lose {
+      background-image: radial-gradient(circle at 50% 30%, rgba(239, 68, 68, 0.35) 0%, rgba(11, 15, 25, 0) 75%);
+    }
+    body.stage-fast-run {
+      background-image: radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.35) 0%, rgba(11, 15, 25, 0) 75%);
+    }
+
+    /* Screen Shake Animation */
+    .screen-shake {
+      animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-3px, 0, 0); }
+      20%, 80% { transform: translate3d(5px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+      40%, 60% { transform: translate3d(6px, 0, 0); }
+    }
+
+    /* Top Nav */
+    header {
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+    }
+
+    .brand-title {
+      font-weight: 900;
+      font-size: 1.25rem;
+      background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-tag {
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      box-shadow: 0 0 10px var(--primary-glow);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-nav {
+      background: rgba(255, 255, 255, 0.08);
+      color: #e2e8f0;
+      border: 1px solid var(--card-border);
+      padding: 7px 14px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-nav:hover {
+      background: rgba(255, 255, 255, 0.16);
+      transform: translateY(-1px);
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      max-width: 1240px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+    }
+
+    /* Views */
+    .view-panel { display: none; }
+    .view-panel.active { display: flex; flex-direction: column; gap: 20px; }
+
+    /* Welcome / Hero Card */
+    .hero-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 44px 30px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-card::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 500px;
+      height: 300px;
+      background: var(--primary-glow);
+      filter: blur(120px);
+      z-index: 0;
+    }
+    .hero-content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .hero-title {
+      font-size: 2.3rem;
+      font-weight: 900;
+      letter-spacing: -1px;
+    }
+    .hero-desc {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      max-width: 680px;
+      line-height: 1.7;
+    }
+
+    .mode-select-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      width: 100%;
+      max-width: 860px;
+      margin-top: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .mode-card {
+      background: rgba(30, 41, 59, 0.7);
+      border: 2px solid var(--card-border);
+      border-radius: 20px;
+      padding: 26px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+    }
+    .mode-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 28px var(--primary-glow);
+      background: rgba(30, 41, 59, 0.95);
+    }
+    .mode-card.glow-gold {
+      border-color: rgba(245, 158, 11, 0.5);
+    }
+    .mode-card.glow-gold:hover {
+      border-color: var(--accent-gold);
+      box-shadow: 0 12px 28px var(--accent-gold-glow);
+    }
+
+    .mode-badge {
+      font-size: 0.75rem;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 8px;
+      align-self: flex-start;
+      background: var(--primary);
+      color: #fff;
+    }
+    .mode-badge.gold {
+      background: linear-gradient(135deg, #d97706, #f59e0b);
+    }
+
+    .mode-card h3 {
+      font-size: 1.3rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mode-card p {
+      font-size: 0.93rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Simulation Layout */
+    .sim-layout {
+      display: grid;
+      grid-template-columns: 1fr 390px;
+      gap: 24px;
+    }
+    @media (max-width: 980px) {
+      .sim-layout { grid-template-columns: 1fr; }
+    }
+
+    /* Stage Board */
+    .stage-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      position: relative;
+      transition: all 0.3s ease;
+    }
+    .stage-card.flash-win {
+      border-color: var(--accent-gold);
+      box-shadow: 0 0 35px var(--accent-gold-glow);
+    }
+    .stage-card.flash-fast {
+      border-color: #38bdf8;
+      box-shadow: 0 0 35px rgba(56, 189, 248, 0.4);
+    }
+
+    /* Host Monty Banner */
+    .host-stage {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 14px 20px;
+      width: 100%;
+      position: relative;
+    }
+
+    /* Monty Avatar with 'Take the L' & 'Win W' Animations */
+    .host-avatar-box {
+      position: relative;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2rem;
+      box-shadow: 0 0 16px var(--primary-glow);
+      flex-shrink: 0;
+      transition: transform 0.3s;
+    }
+
+    /* 'Take the L' Dance Animation */
+    .host-avatar-box.take-the-l {
+      animation: takeTheLDance 0.45s infinite alternate ease-in-out;
+      background: linear-gradient(135deg, #ef4444, #f97316);
+      box-shadow: 0 0 25px rgba(239, 68, 68, 0.7);
+    }
+    @keyframes takeTheLDance {
+      0% { transform: rotate(-18deg) scale(1.15); }
+      100% { transform: rotate(18deg) scale(1.15); }
+    }
+
+    .host-avatar-box.victory-w {
+      animation: victoryJump 0.45s infinite alternate ease-in-out;
+      background: linear-gradient(135deg, #10b981, #06b6d4);
+      box-shadow: 0 0 26px rgba(16, 185, 129, 0.7);
+    }
+    @keyframes victoryJump {
+      0% { transform: translateY(0) scale(1); }
+      100% { transform: translateY(-10px) scale(1.2); }
+    }
+
+    .host-badge-l {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: #dc2626;
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 900;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+    .take-the-l .host-badge-l { display: flex; }
+
+    .host-bubble {
+      flex: 1;
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      padding: 12px 18px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      line-height: 1.5;
+      position: relative;
+    }
+    .host-bubble::before {
+      content: '';
+      position: absolute;
+      left: -8px;
+      top: 50%;
+      transform: translateY(-50%);
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+      border-right: 8px solid rgba(30, 41, 59, 0.9);
+    }
+
+    /* 3 Doors Arena */
+    .doors-arena {
+      display: flex;
+      justify-content: center;
+      gap: 28px;
+      width: 100%;
+      padding: 24px 0;
+      perspective: 1200px;
+    }
+
+    .door-slot {
+      flex: 1;
+      max-width: 210px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .door-frame {
+      width: 100%;
+      aspect-ratio: 1 / 1.75;
+      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+      border-radius: 18px 18px 4px 4px;
+      border: 4px solid #334155;
+      padding: 8px 8px 0 8px;
+      position: relative;
+      cursor: pointer;
+      transform-style: preserve-3d;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), inset 0 2px 10px rgba(0, 0, 0, 0.8);
+      transition: all 0.22s ease;
+    }
+    .door-frame:hover {
+      border-color: #475569;
+      transform: translateY(-4px);
+    }
+
+    /* Suspense Shake for door */
+    .door-slot.suspense-shake .door-frame {
+      animation: doorRumble 0.1s infinite;
+      border-color: var(--accent-gold);
+      box-shadow: 0 0 28px var(--accent-gold-glow);
+    }
+    @keyframes doorRumble {
+      0% { transform: translate(1px, 1px) rotate(0deg); }
+      50% { transform: translate(-1px, -1px) rotate(-0.5deg); }
+      100% { transform: translate(1px, -1px) rotate(0.5deg); }
+    }
+
+    /* Prize inside behind door */
+    .door-interior {
+      position: absolute;
+      inset: 6px 6px 0 6px;
+      background: radial-gradient(circle at 50% 50%, #1e1b4b 0%, #090d16 100%);
+      border-radius: 12px 12px 0 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 4.5rem;
+      z-index: 1;
+      overflow: hidden;
+      transition: background 0.3s;
+    }
+    .prize-title {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: #94a3b8;
+      margin-top: 6px;
+      letter-spacing: 1px;
+    }
+
+    /* Door Moving Panel */
+    .door-panel {
+      position: absolute;
+      inset: 6px 6px 0 6px;
+      background: linear-gradient(135deg, #b45309 0%, #78350f 100%);
+      border: 2px solid #d97706;
+      border-radius: 12px 12px 0 0;
+      z-index: 2;
+      transform-origin: left;
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 3px 0 15px rgba(0, 0, 0, 0.5);
+    }
+
+    .door-emblem {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #fef08a 0%, #d97706 100%);
+      border: 3px solid #fef08a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: #78350f;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    }
+
+    .door-knob {
+      position: absolute;
+      right: 14px;
+      top: 52%;
+      width: 16px;
+      height: 16px;
+      background: radial-gradient(circle, #fef08a 0%, #b45309 100%);
+      border-radius: 50%;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Selected Door State */
+    .door-slot.chosen .door-frame {
+      border-color: #38bdf8;
+      box-shadow: 0 0 26px rgba(56, 189, 248, 0.55);
+    }
+    .door-slot.chosen .door-panel {
+      border-color: #38bdf8;
+    }
+
+    /* Opened Door State */
+    .door-slot.open .door-panel {
+      transform: rotateY(-115deg);
+    }
+
+    .door-indicator {
+      font-size: 0.9rem;
+      font-weight: 800;
+      padding: 5px 12px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #cbd5e1;
+      min-height: 30px;
+    }
+    .door-indicator.active-choice {
+      background: #0284c7;
+      color: #fff;
+      box-shadow: 0 0 10px rgba(2, 132, 199, 0.5);
+    }
+    .door-indicator.host-goat {
+      background: #dc2626;
+      color: #fff;
+    }
+
+    /* Decision Controls (Stay vs Switch) */
+    .decision-deck {
+      display: flex;
+      gap: 16px;
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .btn-act {
+      flex: 1;
+      padding: 16px 22px;
+      font-size: 1.1rem;
+      font-weight: 800;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.18s ease;
+    }
+    .btn-act:hover {
+      transform: translateY(-2px);
+    }
+    .btn-act:active {
+      transform: scale(0.98);
+    }
+
+    .btn-stay {
+      background: rgba(255, 255, 255, 0.1);
+      color: #e2e8f0;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+    .btn-stay:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .btn-switch {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      color: #ffffff;
+      box-shadow: 0 8px 24px var(--primary-glow);
+    }
+    .btn-switch:hover {
+      box-shadow: 0 12px 28px rgba(99, 102, 241, 0.6);
+    }
+
+    .btn-next-round {
+      background: #ffffff;
+      color: #0f172a;
+      width: 100%;
+      max-width: 360px;
+      box-shadow: 0 8px 20px rgba(255, 255, 255, 0.2);
+    }
+    .btn-next-round:hover {
+      background: #f1f5f9;
+      transform: translateY(-2px);
+    }
+
+    /* Sidebar / Mathematics & Statistics Deck */
+    .sidebar-deck {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .stat-title {
+      font-size: 1rem;
+      font-weight: 800;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #f1f5f9;
+    }
+
+    /* Mathematics Fraction & Approx Typography */
+    .math-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .math-column {
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+    }
+    .math-column.glow-switch {
+      border-color: rgba(99, 102, 241, 0.4);
+      background: rgba(30, 27, 75, 0.35);
+    }
+
+    .math-col-label {
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* The Textbook Fraction Box */
+    .math-formula-box {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 0;
+    }
+
+    .math-fraction {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      font-weight: 900;
+      font-size: 1.25rem;
+      line-height: 1;
+    }
+    .numerator {
+      color: #38bdf8;
+      padding-bottom: 4px;
+    }
+    .fraction-bar {
+      width: 100%;
+      height: 2px;
+      background: #94a3b8;
+      border-radius: 1px;
+    }
+    .denominator {
+      color: #cbd5e1;
+      padding-top: 4px;
+    }
+
+    .math-approx-sym {
+      font-size: 1.45rem;
+      font-weight: 900;
+      color: #cbd5e1;
+    }
+
+    .math-percentage {
+      font-size: 1.85rem;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: -0.5px;
+    }
+
+    /* 2X Double Ratio Badge */
+    .ratio-multiplier-badge {
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      color: #ffffff;
+      font-size: 0.85rem;
+      font-weight: 900;
+      padding: 8px 12px;
+      border-radius: 10px;
+      text-align: center;
+      box-shadow: 0 4px 12px var(--accent-gold-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    /* Auto Run Super Speed Buttons */
+    .auto-run-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn-auto {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid var(--card-border);
+      color: #f1f5f9;
+      padding: 11px 15px;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.2s;
+    }
+    .btn-auto:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: #38bdf8;
+      transform: translateY(-1px);
+    }
+    .btn-auto:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-auto .tag {
+      font-size: 0.72rem;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 3px 7px;
+      border-radius: 5px;
+      font-weight: 800;
+    }
+
+    /* Law of Large Numbers Canvas */
+    .canvas-container {
+      width: 100%;
+      height: 120px;
+      background: rgba(15, 23, 42, 0.7);
+      border-radius: 12px;
+      border: 1px solid var(--card-border);
+      position: relative;
+    }
+    #convergenceCanvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Confetti Canvas Fullscreen */
+    #confettiCanvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* Modal Styling */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(11, 15, 25, 0.75);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 500;
+      padding: 20px;
+    }
+    .modal-overlay.active { display: flex; }
+
+    .modal-sheet {
+      background: #1e293b;
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      max-width: 620px;
+      width: 100%;
+      padding: 30px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fullscreen Particle Confetti Canvas -->
+  <canvas id="confettiCanvas"></canvas>
+
+  <!-- Top Header Nav -->
+  <header>
+    <div class="brand" onclick="handleBrandClick()">
+      <div style="font-size: 1.6rem;">🚪</div>
+      <div class="brand-title">몬티홀 확률 실험실</div>
+      <span class="brand-tag">TV 쇼 무대</span>
+    </div>
+
+    <div class="nav-actions">
+      <!-- 처음으로 뒤로가기 버튼 -->
+      <button id="btnHomeNav" class="btn-nav" onclick="goHome()" style="display: none;">
+        <span>🏠 처음으로</span>
+      </button>
+
+      <!-- 사운드 토글 -->
+      <button id="btnSoundToggle" class="btn-nav" onclick="toggleSound()">
+        <span id="soundIcon">🔊</span>
+      </button>
+
+      <!-- 실시간 연결 뱃지 -->
+      <div id="connectionBadge" class="btn-nav" style="display: none; border-color: #10b981; color: #10b981;">
+        ● 실시간 짝꿍 연결됨
+      </div>
+    </div>
+  </header>
+
+  <!-- Main View Frame -->
+  <main>
+
+    <!-- VIEW 1: 모드 선택 대기실 -->
+    <section id="welcomeView" class="view-panel active">
+      <div class="hero-card">
+        <div class="hero-content">
+          <div style="font-size: 4rem;">🚗 🚪 🐐</div>
+          <h1 class="hero-title">바꿀 것인가, 그대로 둘 것인가?</h1>
+          <p class="hero-desc">
+            세 개의 문 중 하나 뒤에는 <strong>새 자동차</strong>가, 둘 뒤에는 <strong>염소</strong>가 있습니다.<br>
+            사회자가 염소 문 하나를 열어준 순간, <strong>선택을 바꾸는 것이 과연 2배 유리할까요?</strong><br>
+            직접 실험하여 '대수의 법칙'으로 확률의 진실을 밝혀보세요!
+          </p>
+
+          <div class="mode-select-grid">
+            <!-- 짝꿍 모드 -->
+            <div class="mode-card glow-gold" onclick="startPairMode()">
+              <span class="mode-badge gold">수업 추천 모드</span>
+              <h3>👥 짝꿍과 함께 실험하기</h3>
+              <p>
+                같은 모둠 짝꿍과 1:1 실시간 화면이 연결됩니다.<br>
+                한 명은 '도전자', 한 명은 '공식 검증관'이 되어 조작 없이 정직하게 20회를 검증합니다.
+              </p>
+            </div>
+
+            <!-- 1인 모드 -->
+            <div class="mode-card" onclick="startSoloMode()">
+              <span class="mode-badge">가정 자습 / 빠른 실험</span>
+              <h3>👤 혼자서 초고속 실험하기</h3>
+              <p>
+                대기 시간 없이 혼자서 20회, 50회, 100회까지 초고속으로 시뮬레이션하고 통계를 확인합니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- VIEW 2: 게임 시뮬레이션 무대 -->
+    <section id="gameView" class="view-panel">
+      <div class="sim-layout">
+
+        <!-- 게임 스테이지 메인 -->
+        <div id="mainStageCard" class="stage-card">
+
+          <!-- 사회자 몬티 배너 & 킹받는 말풍선 -->
+          <div class="host-stage">
+            <div id="hostAvatar" class="host-avatar-box">
+              <span id="hostEmoji">🤵</span>
+              <span class="host-badge-l">L</span>
+            </div>
+            <div id="hostSpeechBubble" class="host-bubble">
+              "자, 인생 역전의 기회! 행운의 여신은 몇 번 문 뒤에 있을까? 문을 하나 골라봐!"
+            </div>
+          </div>
+
+          <!-- 라운드 및 역할 표시줄 -->
+          <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.95rem; font-weight: 700; color: var(--text-muted);">
+            <span id="playerRoleDisplay">🎮 내 차례 (플레이어)</span>
+            <span id="roundCounter">시행: 1 / 20회</span>
+          </div>
+
+          <!-- 3 Doors Arena -->
+          <div class="doors-arena">
+            <!-- 1번 문 -->
+            <div id="slot1" class="door-slot" onclick="onDoorSelected(1)">
+              <div class="door-frame">
+                <div class="door-interior">
+                  <span id="prize1">🐐</span>
+                  <span id="title1" class="prize-title">염소</span>
+                </div>
+                <div class="door-panel">
+                  <div class="door-emblem">1</div>
+                  <div class="door-knob"></div>
+                </div>
+              </div>
+              <div id="tag1" class="door-indicator">1번 문</div>
+            </div>
+
+            <!-- 2번 문 -->
+            <div id="slot2" class="door-slot" onclick="onDoorSelected(2)">
+              <div class="door-frame">
+                <div class="door-interior">
+                  <span id="prize2">🚗</span>
+                  <span id="title2" class="prize-title">자동차</span>
+                </div>
+                <div class="door-panel">
+                  <div class="door-emblem">2</div>
+                  <div class="door-knob"></div>
+                </div>
+              </div>
+              <div id="tag2" class="door-indicator">2번 문</div>
+            </div>
+
+            <!-- 3번 문 -->
+            <div id="slot3" class="door-slot" onclick="onDoorSelected(3)">
+              <div class="door-frame">
+                <div class="door-interior">
+                  <span id="prize3">🐐</span>
+                  <span id="title3" class="prize-title">염소</span>
+                </div>
+                <div class="door-panel">
+                  <div class="door-emblem">3</div>
+                  <div class="door-knob"></div>
+                </div>
+              </div>
+              <div id="tag3" class="door-indicator">3번 문</div>
+            </div>
+          </div>
+
+          <!-- 결정 덱 (바꾸기 vs 유지하기) -->
+          <div id="decisionDeck" class="decision-deck" style="display: none;">
+            <button class="btn-act btn-stay" onclick="finalizeChoice(false)">
+              🔒 그대로 유지 (S)
+            </button>
+            <button class="btn-act btn-switch" onclick="finalizeChoice(true)">
+              🔄 다른 문으로 바꾸기 (R)
+            </button>
+          </div>
+
+          <!-- 다음 판 진행 버튼 -->
+          <div id="nextRoundDeck" style="display: none; width: 100%; justify-content: center;">
+            <button class="btn-act btn-next-round" onclick="nextRound()">
+              다음 판 시작하기 (Space) ➔
+            </button>
+          </div>
+        </div>
+
+
+        <!-- 우측 수학 & 통계 사이드바 -->
+        <div class="sidebar-deck">
+
+          <!-- 교과서 연계 수학적 확률 & 분수 표기 카드 -->
+          <div class="stat-card">
+            <div class="stat-title">
+              <span>📐 통계적 확률 (교과서 표기)</span>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span id="totalTrialsCount" style="color: #38bdf8; font-weight: 800;">0회</span>
+                <!-- 초기화 버튼 (요청 반영) -->
+                <button class="btn-nav" style="padding: 3px 8px; font-size: 0.75rem; background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.4); color: #fca5a5;" onclick="resetAllStats()">
+                  🔄 초기화
+                </button>
+              </div>
+            </div>
+
+            <div class="math-grid">
+              <!-- 바꿨을 때 -->
+              <div class="math-column glow-switch">
+                <div class="math-col-label">
+                  <span>🔄 [바꿨을 때]</span>
+                </div>
+                <div class="math-formula-box">
+                  <div class="math-fraction">
+                    <span class="numerator" id="switchNum">0</span>
+                    <span class="fraction-bar"></span>
+                    <span class="denominator" id="switchDenom">0</span>
+                  </div>
+                  <span class="math-approx-sym" id="switchSym">=</span>
+                  <div class="math-percentage" id="switchPercent">0%</div>
+                </div>
+              </div>
+
+              <!-- 유지했을 때 -->
+              <div class="math-column">
+                <div class="math-col-label">
+                  <span>🔒 [유지했을 때]</span>
+                </div>
+                <div class="math-formula-box">
+                  <div class="math-fraction">
+                    <span class="numerator" id="stayNum">0</span>
+                    <span class="fraction-bar"></span>
+                    <span class="denominator" id="stayDenom">0</span>
+                  </div>
+                  <span class="math-approx-sym" id="staySym">=</span>
+                  <div class="math-percentage" id="stayPercent">0%</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- "바꾸면 정확히 2배!" 배수 인디케이터 배지 -->
+            <div id="ratioMultiplierBadge" class="ratio-multiplier-badge">
+              <span>💡 이론적 확률: 바꾸기(66.7%) = 유지하기(33.3%)의 정확히 2.0배!</span>
+            </div>
+          </div>
+
+          <!-- 대수의 법칙: 누적 상대도수 수렴 그래프 -->
+          <div class="stat-card">
+            <div class="stat-title">
+              <span>📈 대수의 법칙 (상대도수 수렴)</span>
+              <span style="font-size: 0.78rem; color: #a5b4fc;">이론치: 66.7% vs 33.3%</span>
+            </div>
+            <div class="canvas-container">
+              <canvas id="convergenceCanvas"></canvas>
+            </div>
+          </div>
+
+          <!-- 초고속 20회 자동 전략 실행 (무대 고속 룰렛 애니메이션 연동!) -->
+          <div class="stat-card">
+            <div class="stat-title">
+              <span>⚡ 초고속 무대 전략 실험</span>
+              <span id="fastRunIndicator" style="font-size: 0.75rem; color: #38bdf8; display: none;">시뮬레이션 진행 중...</span>
+            </div>
+            <div class="auto-run-group">
+              <button id="btnAutoSwitch" class="btn-auto" onclick="runAnimatedFastSimulation('SWITCH', 20)">
+                <span>⚡ '무조건 바꾸기' 20회 고수</span>
+                <span class="tag">무대 룰렛 연출</span>
+              </button>
+              <button id="btnAutoStay" class="btn-auto" onclick="runAnimatedFastSimulation('STAY', 20)">
+                <span>⚡ '무조건 유지하기' 20회 고수</span>
+                <span class="tag">무대 룰렛 연출</span>
+              </button>
+              <button id="btnAuto100" class="btn-auto" onclick="runAnimatedFastSimulation('HYBRID', 50)">
+                <span>🚀 50회 폭풍 슬롯머신</span>
+                <span class="tag">대수의 법칙</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+
+  <!-- 모달: 교사용 히든 설정 (타이틀 5회 클릭 시에만 노출) -->
+  <div id="hiddenAdminModal" class="modal-overlay">
+    <div class="modal-sheet">
+      <h3 style="font-size: 1.3rem; font-weight: 800;">🔒 교사용 설정 (Firebase 연동)</h3>
+      <p style="font-size: 0.9rem; color: var(--text-muted);">
+        학생들에게는 노출되지 않는 교사용 관리자 창입니다.
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <label style="font-size: 0.85rem; color: #94a3b8;">Firebase Database URL</label>
+        <input type="text" id="adminFbUrl" style="padding: 10px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; color: #fff;">
+      </div>
+
+      <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px;">
+        <button class="btn-nav" onclick="closeAdminModal()">닫기</button>
+        <button class="btn-act btn-switch" style="padding: 10px 18px; font-size: 0.9rem;" onclick="saveAdminSettings()">저장</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- JavaScript Application Logic -->
+  <script>
+    // -------------------------------------------------------------
+    // 1. 순수 Web Audio API 신디사이저 사운드 엔진 (외부 파일 0)
+    // -------------------------------------------------------------
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+      init() {
+        if (!this.ctx && this.enabled) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) this.ctx = new AudioContext();
+        }
+      }
+      // 문 클릭 (딸깍)
+      playClick() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.05);
+        gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.05);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.05);
+      }
+      // 고속 룰렛 틱 소리
+      playTick() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.frequency.setValueAtTime(1200, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.025);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.025);
+      }
+      // 서스펜스 럼블
+      playSuspense() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(90, this.ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(160, this.ctx.currentTime + 0.4);
+        gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.4);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.4);
+      }
+      // 승리 빵파레
+      playWinFanfare() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime + i * 0.09);
+          gain.gain.setValueAtTime(0.25, this.ctx.currentTime + i * 0.09);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i * 0.09 + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(this.ctx.currentTime + i * 0.09);
+          osc.stop(this.ctx.currentTime + i * 0.09 + 0.35);
+        });
+      }
+      // 염소 울음소리 (FM 변조 메에에~)
+      playGoatBleat() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const carrier = this.ctx.createOscillator();
+        const modulator = this.ctx.createOscillator();
+        const modGain = this.ctx.createGain();
+        const mainGain = this.ctx.createGain();
+
+        carrier.type = 'sawtooth';
+        carrier.frequency.setValueAtTime(260, this.ctx.currentTime);
+        carrier.frequency.linearRampToValueAtTime(200, this.ctx.currentTime + 0.4);
+
+        modulator.type = 'sine';
+        modulator.frequency.setValueAtTime(14, this.ctx.currentTime);
+        modGain.gain.setValueAtTime(35, this.ctx.currentTime);
+
+        mainGain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        mainGain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
+
+        modulator.connect(carrier.frequency);
+        carrier.connect(mainGain);
+        mainGain.connect(this.ctx.destination);
+
+        modulator.start();
+        carrier.start();
+        modulator.stop(this.ctx.currentTime + 0.4);
+        carrier.stop(this.ctx.currentTime + 0.4);
+      }
+    }
+    const sound = new SoundEngine();
+
+    function toggleSound() {
+      sound.enabled = !sound.enabled;
+      document.getElementById('soundIcon').textContent = sound.enabled ? '🔊' : '🔇';
+    }
+
+
+    // -------------------------------------------------------------
+    // 2. 순수 Canvas 폭죽 (Confetti Engine)
+    // -------------------------------------------------------------
+    const confettiCanvas = document.getElementById('confettiCanvas');
+    const confettiCtx = confettiCanvas.getContext('2d');
+    let confettiParticles = [];
+
+    function resizeConfetti() {
+      confettiCanvas.width = window.innerWidth;
+      confettiCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeConfetti);
+    resizeConfetti();
+
+    function launchConfetti() {
+      for (let i = 0; i < 75; i++) {
+        confettiParticles.push({
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2,
+          vx: (Math.random() - 0.5) * 18,
+          vy: (Math.random() - 0.8) * 20,
+          size: Math.random() * 8 + 4,
+          color: ['#f59e0b', '#6366f1', '#10b981', '#ec4899', '#38bdf8'][Math.floor(Math.random() * 5)],
+          rot: Math.random() * 360,
+          rotSpeed: (Math.random() - 0.5) * 10,
+          life: 90
+        });
+      }
+    }
+
+    function renderConfetti() {
+      confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+      confettiParticles.forEach((p, idx) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.45;
+        p.rot += p.rotSpeed;
+        p.life--;
+
+        confettiCtx.save();
+        confettiCtx.translate(p.x, p.y);
+        confettiCtx.rotate((p.rot * Math.PI) / 180);
+        confettiCtx.fillStyle = p.color;
+        confettiCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        confettiCtx.restore();
+
+        if (p.life <= 0) confettiParticles.splice(idx, 1);
+      });
+      requestAnimationFrame(renderConfetti);
+    }
+    renderConfetti();
+
+
+    // -------------------------------------------------------------
+    // 3. 게임 상태 변수 (Game State)
+    // -------------------------------------------------------------
+    const GameState = { IDLE: 'IDLE', HOST_REVEALED: 'HOST_REVEALED', FINAL_RESULT: 'FINAL_RESULT', FAST_RUNNING: 'FAST_RUNNING' };
+    let currentState = GameState.IDLE;
+    let round = 1;
+    let maxRound = 20;
+
+    let carDoor = 1;
+    let firstPick = null;
+    let hostDoor = null;
+    let finalPick = null;
+    let isSwitched = false;
+    let isWin = false;
+
+    // 통계 누적 객체
+    const stats = {
+      switchWins: 0,
+      switchTotal: 0,
+      stayWins: 0,
+      stayTotal: 0,
+      history: []
+    };
+
+    // -------------------------------------------------------------
+    // 4. 게임 라이프사이클 (Game Logic)
+    // -------------------------------------------------------------
+    function initRound() {
+      if (currentState === GameState.FAST_RUNNING) return;
+
+      currentState = GameState.IDLE;
+      firstPick = null;
+      hostDoor = null;
+      finalPick = null;
+      isSwitched = false;
+      isWin = false;
+
+      // 무대 조명 초기화
+      document.body.className = '';
+      document.getElementById('mainStageCard').className = 'stage-card';
+
+      resetHostAvatar();
+      updateHostDialogue("자, 행운의 여신은 몇 번 문 뒤에 있을까? 문을 하나 골라봐!");
+
+      carDoor = Math.floor(Math.random() * 3) + 1;
+
+      for (let i = 1; i <= 3; i++) {
+        const slot = document.getElementById(`slot${i}`);
+        slot.className = 'door-slot';
+        document.getElementById(`tag${i}`).className = 'door-indicator';
+        document.getElementById(`tag${i}`).textContent = `${i}번 문`;
+
+        document.getElementById(`prize${i}`).textContent = (i === carDoor) ? '🚗' : '🐐';
+        document.getElementById(`title${i}`).textContent = (i === carDoor) ? '자동차' : '염소';
+      }
+
+      document.getElementById('decisionDeck').style.display = 'none';
+      document.getElementById('nextRoundDeck').style.display = 'none';
+      document.getElementById('roundCounter').textContent = `시행: ${round} / ${maxRound}회`;
+    }
+
+    function onDoorSelected(num) {
+      if (currentState !== GameState.IDLE) return;
+      sound.playClick();
+
+      firstPick = num;
+      const slot = document.getElementById(`slot${num}`);
+      slot.classList.add('chosen', 'suspense-shake');
+      document.getElementById(`tag${num}`).classList.add('active-choice');
+      document.getElementById(`tag${num}`).textContent = '내 선택!';
+
+      sound.playSuspense();
+      updateHostDialogue(`오호, ${num}번 문을 골랐구나! 과연 그 뒤엔 무엇이...?`);
+
+      // 0.4초 서스펜스 후 사회자가 염소 문 개방
+      setTimeout(() => {
+        slot.classList.remove('suspense-shake');
+        openHostGoatDoor();
+      }, 400);
+    }
+
+    function openHostGoatDoor() {
+      currentState = GameState.HOST_REVEALED;
+
+      const candidates = [1, 2, 3].filter(d => d !== firstPick && d !== carDoor);
+      hostDoor = candidates[Math.floor(Math.random() * candidates.length)];
+
+      document.getElementById(`slot${hostDoor}`).classList.add('open');
+      document.getElementById(`tag${hostDoor}`).classList.add('host-goat');
+      document.getElementById(`tag${hostDoor}`).textContent = '사회자 공개 (염소 🐐)';
+
+      sound.playGoatBleat();
+
+      const remaining = [1, 2, 3].find(d => d !== firstPick && d !== hostDoor);
+      updateHostDialogue(`크크큭! ${hostDoor}번 문은 염소였습니다! 🐐 자... ${remaining}번 문으로 바꿀래? 안 바꿀래? 😏`);
+
+      document.getElementById('decisionDeck').style.display = 'flex';
+    }
+
+    function finalizeChoice(switched) {
+      if (currentState !== GameState.HOST_REVEALED) return;
+      sound.playClick();
+
+      currentState = GameState.FINAL_RESULT;
+      isSwitched = switched;
+
+      const remaining = [1, 2, 3].find(d => d !== firstPick && d !== hostDoor);
+      finalPick = isSwitched ? remaining : firstPick;
+
+      // 최종 선택 문 표시
+      for (let i = 1; i <= 3; i++) document.getElementById(`slot${i}`).classList.remove('chosen');
+      document.getElementById(`slot${finalPick}`).classList.add('chosen');
+
+      // 모든 문 개방
+      for (let i = 1; i <= 3; i++) document.getElementById(`slot${i}`).classList.add('open');
+
+      isWin = (finalPick === carDoor);
+
+      // 통계 반영
+      if (isSwitched) {
+        stats.switchTotal++;
+        if (isWin) stats.switchWins++;
+      } else {
+        stats.stayTotal++;
+        if (isWin) stats.stayWins++;
+      }
+
+      // 수렴 그래프용 기록
+      const sRatio = stats.switchTotal ? (stats.switchWins / stats.switchTotal) : 0;
+      const stayRatio = stats.stayTotal ? (stats.stayWins / stats.stayTotal) : 0;
+      stats.history.push({ switchRatio: sRatio, stayRatio: stayRatio });
+
+      updateMathUI();
+      drawConvergenceGraph();
+
+      // 결과 리액션 (Take the L vs Win W) & 무대 조명 효과
+      if (isWin) {
+        document.body.className = 'stage-win';
+        document.getElementById('mainStageCard').classList.add('flash-win');
+        sound.playWinFanfare();
+        launchConfetti();
+        document.body.classList.add('screen-shake');
+        setTimeout(() => document.body.classList.remove('screen-shake'), 400);
+
+        setHostVictoryW();
+        updateHostDialogue(isSwitched
+          ? `대박!! 🚗💨 바꿔서 자동차 당첨! 역시 확률의 승리다! 빅토리 W를 챙겨가라!`
+          : `헉!! 🚗 33.3%의 기적을 뚫고 자동차 당첨! 뚝심 인정이다!`);
+      } else {
+        document.body.className = 'stage-lose';
+        sound.playGoatBleat();
+        setHostTakeTheL();
+        updateHostDialogue(`메에에~ 🐐 꽝! 넌 패배의 L이나 가져가라! 🤦‍♂️ L 획득!`);
+      }
+
+      document.getElementById('decisionDeck').style.display = 'none';
+      document.getElementById('nextRoundDeck').style.display = 'flex';
+    }
+
+    function nextRound() {
+      round++;
+      if (round > maxRound) maxRound += 20;
+      initRound();
+    }
+
+
+    // -------------------------------------------------------------
+    // 5. 초고속 전략 실험: 무대 슬롯머신 룰렛 애니메이션 연동!
+    // -------------------------------------------------------------
+    let fastSimInterval = null;
+
+    function runAnimatedFastSimulation(strategy, count) {
+      if (currentState === GameState.FAST_RUNNING) return;
+      currentState = GameState.FAST_RUNNING;
+
+      // UI 버튼 비활성화 및 표시
+      setFastRunControls(true);
+      document.body.className = 'stage-fast-run';
+      document.getElementById('mainStageCard').className = 'stage-card flash-fast';
+      document.getElementById('fastRunIndicator').style.display = 'inline';
+      updateHostDialogue(`⚡ 초고속 룰렛 실험 시작! 무대 위에서 ${count}번의 대결이 폭풍처럼 펼쳐집니다!`);
+
+      let currentStep = 0;
+      const stepInterval = Math.max(45, Math.floor(1400 / count)); // 약 1.2~1.5초 동안 진행
+
+      fastSimInterval = setInterval(() => {
+        currentStep++;
+
+        // 1. 단일 판 시뮬레이션 계산
+        const car = Math.floor(Math.random() * 3) + 1;
+        const pick = Math.floor(Math.random() * 3) + 1;
+        const hostOptions = [1, 2, 3].filter(d => d !== pick && d !== car);
+        const host = hostOptions[Math.floor(Math.random() * hostOptions.length)];
+        const remaining = [1, 2, 3].find(d => d !== pick && d !== host);
+
+        let doSwitch = (strategy === 'SWITCH');
+        if (strategy === 'HYBRID') doSwitch = Math.random() < 0.5;
+
+        const finalP = doSwitch ? remaining : pick;
+        const win = (finalP === car);
+
+        if (doSwitch) {
+          stats.switchTotal++;
+          if (win) stats.switchWins++;
+        } else {
+          stats.stayTotal++;
+          if (win) stats.stayWins++;
+        }
+
+        const sRatio = stats.switchTotal ? (stats.switchWins / stats.switchTotal) : 0;
+        const stayRatio = stats.stayTotal ? (stats.stayWins / stats.stayTotal) : 0;
+        stats.history.push({ switchRatio: sRatio, stayRatio: stayRatio });
+
+        // 2. 무대 위의 문들을 실제로 고속 회전/개방하는 시각적 연출!
+        for (let i = 1; i <= 3; i++) {
+          const slot = document.getElementById(`slot${i}`);
+          slot.className = 'door-slot open';
+          document.getElementById(`prize${i}`).textContent = (i === car) ? '🚗' : '🐐';
+          document.getElementById(`title${i}`).textContent = (i === car) ? '자동차' : '염소';
+          document.getElementById(`tag${i}`).className = 'door-indicator';
+        }
+        document.getElementById(`slot${finalP}`).classList.add('chosen');
+        document.getElementById(`tag${finalP}`).classList.add('active-choice');
+        document.getElementById(`tag${finalP}`).textContent = win ? '당첨! 🚗' : '꽝 🐐';
+
+        // 사운드 틱 재생
+        sound.playTick();
+
+        // 실시간 분수 및 수렴 그래프 업데이트
+        round++;
+        maxRound = Math.max(maxRound, round);
+        document.getElementById('roundCounter').textContent = `시행: ${round} / ${maxRound}회`;
+        updateMathUI();
+        drawConvergenceGraph();
+
+        // 완료 시점 처리
+        if (currentStep >= count) {
+          clearInterval(fastSimInterval);
+          finishFastSimulation(win, doSwitch, count);
+        }
+      }, stepInterval);
+    }
+
+    function finishFastSimulation(lastWin, lastSwitched, count) {
+      currentState = GameState.IDLE;
+      setFastRunControls(false);
+      document.getElementById('fastRunIndicator').style.display = 'none';
+
+      sound.playWinFanfare();
+      launchConfetti();
+      document.body.className = 'stage-win';
+      document.getElementById('mainStageCard').className = 'stage-card flash-win';
+
+      const sData = formatMathProb(stats.switchWins, stats.switchTotal);
+      const stayData = formatMathProb(stats.stayWins, stats.stayTotal);
+
+      if (stats.switchTotal > 0 && stats.stayTotal > 0) {
+        const mult = (sData.rawRatio / stayData.rawRatio).toFixed(1);
+        updateHostDialogue(`🎉 ${count}회 완료! 바꾸기(${sData.percent}%)가 유지하기(${stayData.percent}%)보다 약 ${mult}배 높습니다!`);
+      } else {
+        updateHostDialogue(`🎉 ${count}회 초고속 시뮬레이션 완료! 누적된 그래프와 분수를 확인해 보세요!`);
+      }
+
+      document.getElementById('nextRoundDeck').style.display = 'flex';
+    }
+
+    function setFastRunControls(disabled) {
+      document.getElementById('btnAutoSwitch').disabled = disabled;
+      document.getElementById('btnAutoStay').disabled = disabled;
+      document.getElementById('btnAuto100').disabled = disabled;
+    }
+
+
+    // -------------------------------------------------------------
+    // 6. 데이터 초기화 (요청 반영)
+    // -------------------------------------------------------------
+    function resetAllStats() {
+      sound.playClick();
+      stats.switchWins = 0;
+      stats.switchTotal = 0;
+      stats.stayWins = 0;
+      stats.stayTotal = 0;
+      stats.history = [];
+      round = 1;
+      maxRound = 20;
+
+      updateMathUI();
+      drawConvergenceGraph();
+      initRound();
+      updateHostDialogue("🔄 통계와 무대가 깨끗하게 0회로 초기화되었습니다. 새로운 실험을 시작해보세요!");
+    }
+
+
+    // -------------------------------------------------------------
+    // 7. 수학적 분수(M/N) 및 근삿값(≈) 표기 로직
+    // -------------------------------------------------------------
+    function updateMathUI() {
+      const sTot = stats.switchTotal;
+      const sWin = stats.switchWins;
+      const stayTot = stats.stayTotal;
+      const stayWin = stats.stayWins;
+
+      const sData = formatMathProb(sWin, sTot);
+      const stayData = formatMathProb(stayWin, stayTot);
+
+      document.getElementById('totalTrialsCount').textContent = `총 ${sTot + stayTot}회`;
+
+      // 바꿨을 때
+      document.getElementById('switchNum').textContent = sData.num;
+      document.getElementById('switchDenom').textContent = sData.denom;
+      document.getElementById('switchSym').textContent = sData.sym;
+      document.getElementById('switchPercent').textContent = `${sData.percent}%`;
+
+      // 유지했을 때
+      document.getElementById('stayNum').textContent = stayData.num;
+      document.getElementById('stayDenom').textContent = stayData.denom;
+      document.getElementById('staySym').textContent = stayData.sym;
+      document.getElementById('stayPercent').textContent = `${stayData.percent}%`;
+
+      // 배수 인디케이터 배지 (예: 바꾸면 2.1배 유리!)
+      const badge = document.getElementById('ratioMultiplierBadge');
+      if (stayData.rawRatio > 0 && sData.rawRatio > 0) {
+        const multiple = (sData.rawRatio / stayData.rawRatio).toFixed(1);
+        badge.innerHTML = `🔥 <strong>[실험 결과]</strong> 바꾸기가 유지하기보다 <strong>${multiple}배</strong> 높은 당첨률 기록 중!`;
+      } else {
+        badge.innerHTML = `💡 이론적 확률: 바꾸기(66.7%) = 유지하기(33.3%)의 정확히 2.0배!`;
+      }
+    }
+
+    function formatMathProb(wins, total) {
+      if (total === 0) return { num: 0, denom: 0, sym: '=', percent: '0', rawRatio: 0 };
+      const raw = wins / total;
+      const pct = raw * 100;
+      const rounded = Math.round(pct * 10) / 10;
+      const isExact = Math.abs(pct - rounded) < 0.0001;
+      return {
+        num: wins,
+        denom: total,
+        sym: isExact ? '=' : '≈',
+        percent: rounded.toFixed(1),
+        rawRatio: raw
+      };
+    }
+
+
+    // -------------------------------------------------------------
+    // 8. 대수의 법칙 수렴 그래프 (Canvas Rendering)
+    // -------------------------------------------------------------
+    function drawConvergenceGraph() {
+      const cvs = document.getElementById('convergenceCanvas');
+      const ctx = cvs.getContext('2d');
+      const rect = cvs.getBoundingClientRect();
+      cvs.width = rect.width * window.devicePixelRatio;
+      cvs.height = rect.height * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+      const w = rect.width;
+      const h = rect.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // 이론 기준선 66.7% (2/3)
+      const y66 = h - (h * (2 / 3));
+      ctx.beginPath();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#818cf8';
+      ctx.lineWidth = 1.5;
+      ctx.moveTo(0, y66);
+      ctx.lineTo(w, y66);
+      ctx.stroke();
+
+      // 이론 기준선 33.3% (1/3)
+      const y33 = h - (h * (1 / 3));
+      ctx.beginPath();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 1.5;
+      ctx.moveTo(0, y33);
+      ctx.lineTo(w, y33);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const pts = stats.history;
+      if (pts.length < 2) return;
+
+      const step = w / Math.max(pts.length - 1, 20);
+
+      // 바꿈 곡선 (하늘색)
+      ctx.beginPath();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.5;
+      pts.forEach((pt, i) => {
+        const x = i * step;
+        const y = h - (h * pt.switchRatio);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // 유지 곡선 (회색)
+      ctx.beginPath();
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 2;
+      pts.forEach((pt, i) => {
+        const x = i * step;
+        const y = h - (h * pt.stayRatio);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+
+    // -------------------------------------------------------------
+    // 9. 사회자 몬티 리액션 & 밈 연출 (Take the L & W)
+    // -------------------------------------------------------------
+    function updateHostDialogue(text) {
+      document.getElementById('hostSpeechBubble').textContent = text;
+    }
+
+    function resetHostAvatar() {
+      const box = document.getElementById('hostAvatar');
+      box.className = 'host-avatar-box';
+      document.getElementById('hostEmoji').textContent = '🤵';
+    }
+
+    function setHostTakeTheL() {
+      const box = document.getElementById('hostAvatar');
+      box.className = 'host-avatar-box take-the-l';
+      document.getElementById('hostEmoji').textContent = '🤦‍♂️';
+    }
+
+    function setHostVictoryW() {
+      const box = document.getElementById('hostAvatar');
+      box.className = 'host-avatar-box victory-w';
+      document.getElementById('hostEmoji').textContent = '🏆';
+    }
+
+
+    // -------------------------------------------------------------
+    // 10. 네비게이션 & 교사용 히든 설정
+    // -------------------------------------------------------------
+    function showView(viewId) {
+      document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById(viewId).classList.add('active');
+      document.getElementById('btnHomeNav').style.display = (viewId === 'gameView') ? 'flex' : 'none';
+    }
+
+    function startSoloMode() {
+      showView('gameView');
+      initRound();
+      drawConvergenceGraph();
+    }
+
+    function startPairMode() {
+      showView('gameView');
+      document.getElementById('connectionBadge').style.display = 'flex';
+      initRound();
+      drawConvergenceGraph();
+    }
+
+    function goHome() {
+      sound.playClick();
+      showView('welcomeView');
+    }
+
+    // 타이틀 5회 연속 클릭 시 교사용 관리자 모달 열림 (학생에게는 완전 은닉)
+    let brandClickCount = 0;
+    let brandTimer = null;
+    function handleBrandClick() {
+      brandClickCount++;
+      clearTimeout(brandTimer);
+      brandTimer = setTimeout(() => { brandClickCount = 0; }, 1500);
+      if (brandClickCount >= 5) {
+        brandClickCount = 0;
+        document.getElementById('hiddenAdminModal').classList.add('active');
+      }
+    }
+    function closeAdminModal() {
+      document.getElementById('hiddenAdminModal').classList.remove('active');
+    }
+    function saveAdminSettings() {
+      closeAdminModal();
+    }
+
+
+    // -------------------------------------------------------------
+    // 11. 키보드 단축키
+    // -------------------------------------------------------------
+    window.addEventListener('keydown', (e) => {
+      if (currentState === GameState.FAST_RUNNING) return;
+
+      if (e.key === '1') onDoorSelected(1);
+      if (e.key === '2') onDoorSelected(2);
+      if (e.key === '3') onDoorSelected(3);
+
+      if (e.key === 'r' || e.key === 'R' || e.key === 'ㄱ') finalizeChoice(true);
+      if (e.key === 's' || e.key === 'S' || e.key === 'ㄴ') finalizeChoice(false);
+
+      if (e.code === 'Space') {
+        if (document.getElementById('nextRoundDeck').style.display === 'flex') {
+          e.preventDefault();
+          nextRound();
+        }
+      }
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initRound();
+      drawConvergenceGraph();
+    });
+  </script>
+</body>
+</html>
