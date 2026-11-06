@@ -2,765 +2,92 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>몬티홀 문제 확률 실험실 — TV 쇼 무대 에디션</title>
-  <!-- Firebase SDK (v9 compat) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>몬티홀 쇼! 바꿀까? 말까? — 실시간 확률 실험실</title>
+  <!-- Pretendard 웹폰트 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <!-- 실시간 동기화 라이브러리 (MQTT over WSS + PeerJS WebRTC + QR 생성 + 선택적 Firebase) -->
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.3/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
     :root {
-      --bg: #0b0f19;
-      --card-bg: rgba(23, 32, 54, 0.88);
-      --card-border: rgba(255, 255, 255, 0.12);
-      --primary: #6366f1;
-      --primary-glow: rgba(99, 102, 241, 0.4);
-      --accent-gold: #f59e0b;
-      --accent-gold-glow: rgba(245, 158, 11, 0.5);
-      --success: #10b981;
-      --danger: #ef4444;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
-      --stage-light: radial-gradient(circle at 50% 25%, rgba(99, 102, 241, 0.25) 0%, rgba(11, 15, 25, 0) 70%);
+      --bg-studio: #F4F7FE;
+      --bg-stage: #FFFDF7;
+      --ink: #0F172A;
+      --ink-sub: #475569;
+      --ink-muted: #94A3B8;
+      --line: #E2E8F0;
+      --line-strong: #CBD5E1;
+
+      --blue: #2563EB;
+      --blue-dark: #1D4ED8;
+      --blue-soft: #EFF6FF;
+
+      --mint: #059669;
+      --mint-dark: #047857;
+      --mint-soft: #ECFDF5;
+
+      --coral: #EA580C;
+      --coral-dark: #C2410C;
+      --coral-soft: #FFF7ED;
+
+      --gold: #F59E0B;
+      --gold-dark: #B45309;
+      --gold-soft: #FEF3C7;
+
+      --red: #EF4444;
+      --red-dark: #B91C1C;
+      --red-soft: #FEF2F2;
+
+      --purple: #7C3AED;
+      --shadow-card: 0 10px 30px rgba(15, 23, 42, 0.07), 0 2px 6px rgba(15, 23, 42, 0.04);
+      --shadow-pop: 0 18px 40px rgba(37, 99, 235, 0.14);
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", sans-serif;
+      font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      -webkit-tap-highlight-color: transparent;
       user-select: none;
     }
 
     body {
-      background-color: var(--bg);
-      background-image: var(--stage-light);
-      color: var(--text);
+      background-color: var(--bg-studio);
+      background-image:
+        radial-gradient(circle at 15% 10%, rgba(37, 99, 235, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 85% 15%, rgba(245, 158, 11, 0.10) 0%, transparent 45%);
+      color: var(--ink);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       overflow-x: hidden;
-      transition: background-image 0.4s ease;
+      transition: background-color 0.35s ease;
     }
 
-    /* Stage Dynamic Light FX */
-    body.stage-win {
-      background-image: radial-gradient(circle at 50% 30%, rgba(245, 158, 11, 0.4) 0%, rgba(11, 15, 25, 0) 75%);
+    body.fx-win {
+      background-color: #FEF9C3;
     }
-    body.stage-lose {
-      background-image: radial-gradient(circle at 50% 30%, rgba(239, 68, 68, 0.35) 0%, rgba(11, 15, 25, 0) 75%);
-    }
-    body.stage-fast-run {
-      background-image: radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.35) 0%, rgba(11, 15, 25, 0) 75%);
+    body.fx-lose {
+      background-color: #FEE2E2;
     }
 
-    /* Screen Shake Animation */
+    /* 화면 흔들림 (당첨 / 꽝 타격감) */
     .screen-shake {
-      animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+      animation: screenShake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
     }
-    @keyframes shake {
+    @keyframes screenShake {
       10%, 90% { transform: translate3d(-3px, 0, 0); }
       20%, 80% { transform: translate3d(5px, 0, 0); }
-      30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
-      40%, 60% { transform: translate3d(6px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-7px, 0, 0); }
+      40%, 60% { transform: translate3d(7px, 0, 0); }
     }
 
-    /* Top Nav */
-    header {
-      background: rgba(15, 23, 42, 0.88);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--card-border);
-      padding: 12px 24px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-    }
-
-    .brand-title {
-      font-weight: 900;
-      font-size: 1.25rem;
-      background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      letter-spacing: -0.5px;
-    }
-
-    .brand-tag {
-      background: linear-gradient(135deg, #4f46e5, #7c3aed);
-      color: #fff;
-      font-size: 0.72rem;
-      font-weight: 800;
-      padding: 3px 8px;
-      border-radius: 9999px;
-      box-shadow: 0 0 10px var(--primary-glow);
-    }
-
-    .nav-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .btn-nav {
-      background: rgba(255, 255, 255, 0.08);
-      color: #e2e8f0;
-      border: 1px solid var(--card-border);
-      padding: 7px 14px;
-      border-radius: 10px;
-      font-size: 0.85rem;
-      font-weight: 700;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      transition: all 0.2s;
-    }
-    .btn-nav:hover {
-      background: rgba(255, 255, 255, 0.16);
-      transform: translateY(-1px);
-    }
-
-    /* Main Container */
-    main {
-      flex: 1;
-      max-width: 1240px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-      position: relative;
-    }
-
-    /* Views */
-    .view-panel { display: none; }
-    .view-panel.active { display: flex; flex-direction: column; gap: 20px; }
-
-    /* Welcome / Hero Card */
-    .hero-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 24px;
-      padding: 44px 30px;
-      text-align: center;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 20px;
-      position: relative;
-      overflow: hidden;
-    }
-    .hero-card::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 500px;
-      height: 300px;
-      background: var(--primary-glow);
-      filter: blur(120px);
-      z-index: 0;
-    }
-    .hero-content {
-      position: relative;
-      z-index: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-    }
-    .hero-title {
-      font-size: 2.3rem;
-      font-weight: 900;
-      letter-spacing: -1px;
-    }
-    .hero-desc {
-      font-size: 1.1rem;
-      color: var(--text-muted);
-      max-width: 680px;
-      line-height: 1.7;
-    }
-
-    .mode-select-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 20px;
-      width: 100%;
-      max-width: 860px;
-      margin-top: 10px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .mode-card {
-      background: rgba(30, 41, 59, 0.7);
-      border: 2px solid var(--card-border);
-      border-radius: 20px;
-      padding: 26px;
-      text-align: left;
-      cursor: pointer;
-      transition: all 0.25s ease;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      position: relative;
-    }
-    .mode-card:hover {
-      border-color: var(--primary);
-      transform: translateY(-4px);
-      box-shadow: 0 12px 28px var(--primary-glow);
-      background: rgba(30, 41, 59, 0.95);
-    }
-    .mode-card.glow-gold {
-      border-color: rgba(245, 158, 11, 0.5);
-    }
-    .mode-card.glow-gold:hover {
-      border-color: var(--accent-gold);
-      box-shadow: 0 12px 28px var(--accent-gold-glow);
-    }
-
-    .mode-badge {
-      font-size: 0.75rem;
-      font-weight: 800;
-      padding: 4px 10px;
-      border-radius: 8px;
-      align-self: flex-start;
-      background: var(--primary);
-      color: #fff;
-    }
-    .mode-badge.gold {
-      background: linear-gradient(135deg, #d97706, #f59e0b);
-    }
-
-    .mode-card h3 {
-      font-size: 1.3rem;
-      font-weight: 800;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .mode-card p {
-      font-size: 0.93rem;
-      color: var(--text-muted);
-      line-height: 1.6;
-    }
-
-    /* Simulation Layout */
-    .sim-layout {
-      display: grid;
-      grid-template-columns: 1fr 390px;
-      gap: 24px;
-    }
-    @media (max-width: 980px) {
-      .sim-layout { grid-template-columns: 1fr; }
-    }
-
-    /* Stage Board */
-    .stage-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 24px;
-      padding: 24px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 20px;
-      position: relative;
-      transition: all 0.3s ease;
-    }
-    .stage-card.flash-win {
-      border-color: var(--accent-gold);
-      box-shadow: 0 0 35px var(--accent-gold-glow);
-    }
-    .stage-card.flash-fast {
-      border-color: #38bdf8;
-      box-shadow: 0 0 35px rgba(56, 189, 248, 0.4);
-    }
-
-    /* Host Monty Banner */
-    .host-stage {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      background: rgba(15, 23, 42, 0.75);
-      border: 1px solid var(--card-border);
-      border-radius: 18px;
-      padding: 14px 20px;
-      width: 100%;
-      position: relative;
-    }
-
-    /* Monty Avatar with 'Take the L' & 'Win W' Animations */
-    .host-avatar-box {
-      position: relative;
-      width: 64px;
-      height: 64px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 2.2rem;
-      box-shadow: 0 0 16px var(--primary-glow);
-      flex-shrink: 0;
-      transition: transform 0.3s;
-    }
-
-    /* 'Take the L' Dance Animation */
-    .host-avatar-box.take-the-l {
-      animation: takeTheLDance 0.45s infinite alternate ease-in-out;
-      background: linear-gradient(135deg, #ef4444, #f97316);
-      box-shadow: 0 0 25px rgba(239, 68, 68, 0.7);
-    }
-    @keyframes takeTheLDance {
-      0% { transform: rotate(-18deg) scale(1.15); }
-      100% { transform: rotate(18deg) scale(1.15); }
-    }
-
-    .host-avatar-box.victory-w {
-      animation: victoryJump 0.45s infinite alternate ease-in-out;
-      background: linear-gradient(135deg, #10b981, #06b6d4);
-      box-shadow: 0 0 26px rgba(16, 185, 129, 0.7);
-    }
-    @keyframes victoryJump {
-      0% { transform: translateY(0) scale(1); }
-      100% { transform: translateY(-10px) scale(1.2); }
-    }
-
-    .host-badge-l {
-      position: absolute;
-      top: -6px;
-      right: -6px;
-      background: #dc2626;
-      color: #fff;
-      font-size: 0.9rem;
-      font-weight: 900;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      border: 2px solid #fff;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-    }
-    .take-the-l .host-badge-l { display: flex; }
-
-    .host-bubble {
-      flex: 1;
-      background: rgba(30, 41, 59, 0.9);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 14px;
-      padding: 12px 18px;
-      font-size: 1.05rem;
-      font-weight: 700;
-      color: #f1f5f9;
-      line-height: 1.5;
-      position: relative;
-    }
-    .host-bubble::before {
-      content: '';
-      position: absolute;
-      left: -8px;
-      top: 50%;
-      transform: translateY(-50%);
-      border-top: 8px solid transparent;
-      border-bottom: 8px solid transparent;
-      border-right: 8px solid rgba(30, 41, 59, 0.9);
-    }
-
-    /* 3 Doors Arena */
-    .doors-arena {
-      display: flex;
-      justify-content: center;
-      gap: 28px;
-      width: 100%;
-      padding: 24px 0;
-      perspective: 1200px;
-    }
-
-    .door-slot {
-      flex: 1;
-      max-width: 210px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .door-frame {
-      width: 100%;
-      aspect-ratio: 1 / 1.75;
-      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-      border-radius: 18px 18px 4px 4px;
-      border: 4px solid #334155;
-      padding: 8px 8px 0 8px;
-      position: relative;
-      cursor: pointer;
-      transform-style: preserve-3d;
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), inset 0 2px 10px rgba(0, 0, 0, 0.8);
-      transition: all 0.22s ease;
-    }
-    .door-frame:hover {
-      border-color: #475569;
-      transform: translateY(-4px);
-    }
-
-    /* Suspense Shake for door */
-    .door-slot.suspense-shake .door-frame {
-      animation: doorRumble 0.1s infinite;
-      border-color: var(--accent-gold);
-      box-shadow: 0 0 28px var(--accent-gold-glow);
-    }
-    @keyframes doorRumble {
-      0% { transform: translate(1px, 1px) rotate(0deg); }
-      50% { transform: translate(-1px, -1px) rotate(-0.5deg); }
-      100% { transform: translate(1px, -1px) rotate(0.5deg); }
-    }
-
-    /* Prize inside behind door */
-    .door-interior {
-      position: absolute;
-      inset: 6px 6px 0 6px;
-      background: radial-gradient(circle at 50% 50%, #1e1b4b 0%, #090d16 100%);
-      border-radius: 12px 12px 0 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-size: 4.5rem;
-      z-index: 1;
-      overflow: hidden;
-      transition: background 0.3s;
-    }
-    .prize-title {
-      font-size: 0.95rem;
-      font-weight: 800;
-      color: #94a3b8;
-      margin-top: 6px;
-      letter-spacing: 1px;
-    }
-
-    /* Door Moving Panel */
-    .door-panel {
-      position: absolute;
-      inset: 6px 6px 0 6px;
-      background: linear-gradient(135deg, #b45309 0%, #78350f 100%);
-      border: 2px solid #d97706;
-      border-radius: 12px 12px 0 0;
-      z-index: 2;
-      transform-origin: left;
-      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 3px 0 15px rgba(0, 0, 0, 0.5);
-    }
-
-    .door-emblem {
-      width: 58px;
-      height: 58px;
-      border-radius: 50%;
-      background: radial-gradient(circle, #fef08a 0%, #d97706 100%);
-      border: 3px solid #fef08a;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 2.2rem;
-      font-weight: 900;
-      color: #78350f;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-    }
-
-    .door-knob {
-      position: absolute;
-      right: 14px;
-      top: 52%;
-      width: 16px;
-      height: 16px;
-      background: radial-gradient(circle, #fef08a 0%, #b45309 100%);
-      border-radius: 50%;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
-    }
-
-    /* Selected Door State */
-    .door-slot.chosen .door-frame {
-      border-color: #38bdf8;
-      box-shadow: 0 0 26px rgba(56, 189, 248, 0.55);
-    }
-    .door-slot.chosen .door-panel {
-      border-color: #38bdf8;
-    }
-
-    /* Opened Door State */
-    .door-slot.open .door-panel {
-      transform: rotateY(-115deg);
-    }
-
-    .door-indicator {
-      font-size: 0.9rem;
-      font-weight: 800;
-      padding: 5px 12px;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.08);
-      color: #cbd5e1;
-      min-height: 30px;
-    }
-    .door-indicator.active-choice {
-      background: #0284c7;
-      color: #fff;
-      box-shadow: 0 0 10px rgba(2, 132, 199, 0.5);
-    }
-    .door-indicator.host-goat {
-      background: #dc2626;
-      color: #fff;
-    }
-
-    /* Decision Controls (Stay vs Switch) */
-    .decision-deck {
-      display: flex;
-      gap: 16px;
-      width: 100%;
-      max-width: 520px;
-    }
-
-    .btn-act {
-      flex: 1;
-      padding: 16px 22px;
-      font-size: 1.1rem;
-      font-weight: 800;
-      border-radius: 14px;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      transition: all 0.18s ease;
-    }
-    .btn-act:hover {
-      transform: translateY(-2px);
-    }
-    .btn-act:active {
-      transform: scale(0.98);
-    }
-
-    .btn-stay {
-      background: rgba(255, 255, 255, 0.1);
-      color: #e2e8f0;
-      border: 2px solid rgba(255, 255, 255, 0.2);
-    }
-    .btn-stay:hover {
-      background: rgba(255, 255, 255, 0.18);
-    }
-
-    .btn-switch {
-      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-      color: #ffffff;
-      box-shadow: 0 8px 24px var(--primary-glow);
-    }
-    .btn-switch:hover {
-      box-shadow: 0 12px 28px rgba(99, 102, 241, 0.6);
-    }
-
-    .btn-next-round {
-      background: #ffffff;
-      color: #0f172a;
-      width: 100%;
-      max-width: 360px;
-      box-shadow: 0 8px 20px rgba(255, 255, 255, 0.2);
-    }
-    .btn-next-round:hover {
-      background: #f1f5f9;
-      transform: translateY(-2px);
-    }
-
-    /* Sidebar / Mathematics & Statistics Deck */
-    .sidebar-deck {
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-
-    .stat-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 20px;
-      padding: 20px;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-    .stat-title {
-      font-size: 1rem;
-      font-weight: 800;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      color: #f1f5f9;
-    }
-
-    /* Mathematics Fraction & Approx Typography */
-    .math-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-    }
-
-    .math-column {
-      background: rgba(15, 23, 42, 0.65);
-      border: 1px solid var(--card-border);
-      border-radius: 16px;
-      padding: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      position: relative;
-    }
-    .math-column.glow-switch {
-      border-color: rgba(99, 102, 241, 0.4);
-      background: rgba(30, 27, 75, 0.35);
-    }
-
-    .math-col-label {
-      font-size: 0.82rem;
-      font-weight: 800;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    /* The Textbook Fraction Box */
-    .math-formula-box {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 8px 0;
-    }
-
-    .math-fraction {
-      display: inline-flex;
-      flex-direction: column;
-      align-items: center;
-      font-weight: 900;
-      font-size: 1.25rem;
-      line-height: 1;
-    }
-    .numerator {
-      color: #38bdf8;
-      padding-bottom: 4px;
-    }
-    .fraction-bar {
-      width: 100%;
-      height: 2px;
-      background: #94a3b8;
-      border-radius: 1px;
-    }
-    .denominator {
-      color: #cbd5e1;
-      padding-top: 4px;
-    }
-
-    .math-approx-sym {
-      font-size: 1.45rem;
-      font-weight: 900;
-      color: #cbd5e1;
-    }
-
-    .math-percentage {
-      font-size: 1.85rem;
-      font-weight: 900;
-      color: #ffffff;
-      letter-spacing: -0.5px;
-    }
-
-    /* 2X Double Ratio Badge */
-    .ratio-multiplier-badge {
-      background: linear-gradient(135deg, #f59e0b, #ef4444);
-      color: #ffffff;
-      font-size: 0.85rem;
-      font-weight: 900;
-      padding: 8px 12px;
-      border-radius: 10px;
-      text-align: center;
-      box-shadow: 0 4px 12px var(--accent-gold-glow);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    }
-
-    /* Auto Run Super Speed Buttons */
-    .auto-run-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .btn-auto {
-      background: rgba(255, 255, 255, 0.07);
-      border: 1px solid var(--card-border);
-      color: #f1f5f9;
-      padding: 11px 15px;
-      border-radius: 12px;
-      font-size: 0.9rem;
-      font-weight: 700;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      transition: all 0.2s;
-    }
-    .btn-auto:hover {
-      background: rgba(255, 255, 255, 0.15);
-      border-color: #38bdf8;
-      transform: translateY(-1px);
-    }
-    .btn-auto:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .btn-auto .tag {
-      font-size: 0.72rem;
-      background: rgba(255, 255, 255, 0.15);
-      padding: 3px 7px;
-      border-radius: 5px;
-      font-weight: 800;
-    }
-
-    /* Law of Large Numbers Canvas */
-    .canvas-container {
-      width: 100%;
-      height: 120px;
-      background: rgba(15, 23, 42, 0.7);
-      border-radius: 12px;
-      border: 1px solid var(--card-border);
-      position: relative;
-    }
-    #convergenceCanvas {
-      width: 100%;
-      height: 100%;
-    }
-
-    /* Confetti Canvas Fullscreen */
+    /* 전체 화면 폭죽 캔버스 */
     #confettiCanvas {
       position: fixed;
       inset: 0;
@@ -768,1000 +95,3167 @@
       z-index: 999;
     }
 
-    /* Modal Styling */
-    .modal-overlay {
+    /* 상단 헤더 */
+    header {
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 2px solid var(--line);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      gap: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .brand-logo {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #2563EB, #7C3AED);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 1.2rem;
+      box-shadow: 0 4px 0 #1E40AF;
+    }
+    .brand-name {
+      font-size: 1.2rem;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      color: var(--ink);
+    }
+    .brand-pill {
+      background: var(--gold-soft);
+      color: var(--gold-dark);
+      border: 1.5px solid #FCD34D;
+      font-size: 0.75rem;
+      font-weight: 800;
+      padding: 3px 9px;
+      border-radius: 999px;
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    /* 쫀득한 3D 택타일 버튼 공통 */
+    .btn-3d {
+      border: 2px solid var(--ink);
+      border-radius: 14px;
+      padding: 9px 16px;
+      font-size: 0.9rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      background: #ffffff;
+      color: var(--ink);
+      box-shadow: 0 4px 0 var(--ink);
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s;
+    }
+    .btn-3d:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 5px 0 var(--ink);
+    }
+    .btn-3d:active:not(:disabled) {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 var(--ink);
+    }
+    .btn-3d:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-blue {
+      background: var(--blue);
+      color: #ffffff;
+      border-color: #1E3A8A;
+      box-shadow: 0 5px 0 #1E3A8A;
+    }
+    .btn-blue:hover:not(:disabled) { background: #1D4ED8; box-shadow: 0 6px 0 #1E3A8A; }
+    .btn-blue:active:not(:disabled) { box-shadow: 0 1px 0 #1E3A8A; }
+
+    .btn-gold {
+      background: var(--gold);
+      color: #ffffff;
+      border-color: #92400E;
+      box-shadow: 0 5px 0 #92400E;
+    }
+    .btn-gold:hover:not(:disabled) { background: #D97706; box-shadow: 0 6px 0 #92400E; }
+    .btn-gold:active:not(:disabled) { box-shadow: 0 1px 0 #92400E; }
+
+    .btn-mint {
+      background: var(--mint);
+      color: #ffffff;
+      border-color: #065F46;
+      box-shadow: 0 5px 0 #065F46;
+    }
+    .btn-mint:hover:not(:disabled) { background: #047857; box-shadow: 0 6px 0 #065F46; }
+    .btn-mint:active:not(:disabled) { box-shadow: 0 1px 0 #065F46; }
+
+    .btn-soft-red {
+      background: var(--red-soft);
+      color: var(--red-dark);
+      border-color: #FCA5A5;
+      box-shadow: 0 3px 0 #FCA5A5;
+    }
+    .btn-soft-red:active:not(:disabled) { box-shadow: 0 0px 0 #FCA5A5; }
+
+    .room-chip {
+      background: var(--mint-soft);
+      color: var(--mint-dark);
+      border: 2px solid #6EE7B7;
+      box-shadow: 0 3px 0 #6EE7B7;
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .live-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--mint);
+      animation: livePulse 1.4s infinite;
+    }
+    @keyframes livePulse {
+      0%, 100% { transform: scale(0.9); opacity: 0.7; }
+      50% { transform: scale(1.3); opacity: 1; }
+    }
+
+    /* 메인 레이아웃 */
+    main {
+      flex: 1;
+      width: 100%;
+      max-width: min(1560px, 94vw);
+      margin: 0 auto;
+      padding: 12px 16px 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .view-section { display: none; flex-direction: column; gap: 14px; width: 100%; }
+    .view-section.active { display: flex; }
+
+    /* =========================================================
+       VIEW 1: 홈 화면 (모드 선택 로비)
+       ========================================================= */
+    .lobby-hero {
+      background: #ffffff;
+      border: 2.5px solid var(--ink);
+      border-radius: 26px;
+      padding: 28px 24px;
+      box-shadow: 0 8px 0 var(--ink);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+    .lobby-illust {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      height: 80px;
+    }
+    .lobby-title {
+      font-size: clamp(1.7rem, 3.2vw, 2.4rem);
+      font-weight: 900;
+      letter-spacing: -1px;
+      line-height: 1.2;
+    }
+    .lobby-sub {
+      font-size: 1.02rem;
+      color: var(--ink-sub);
+      max-width: 720px;
+      line-height: 1.6;
+      font-weight: 500;
+    }
+    .snack-rule-banner {
+      background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+      border: 2px solid var(--blue);
+      color: var(--blue-dark);
+      padding: 9px 20px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 0.95rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .lobby-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      width: 100%;
+    }
+    @media (max-width: 960px) {
+      .lobby-cards { grid-template-columns: 1fr; }
+    }
+
+    .lobby-card {
+      background: #ffffff;
+      border: 2.5px solid var(--ink);
+      border-radius: 24px;
+      padding: 26px 24px;
+      box-shadow: 0 8px 0 var(--ink);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+      transition: transform 0.18s ease;
+    }
+    .lobby-card:hover {
+      transform: translateY(-4px);
+    }
+    .lobby-card.card-stage { background: linear-gradient(180deg, #EFF6FF 0%, #FFFFFF 55%); }
+    .lobby-card.card-watcher { background: linear-gradient(180deg, #ECFDF5 0%, #FFFFFF 55%); }
+    .lobby-card.card-lab { background: linear-gradient(180deg, #FFF7ED 0%, #FFFFFF 55%); }
+
+    .card-top-tag {
+      display: inline-flex;
+      align-self: flex-start;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 900;
+    }
+    .tag-blue { background: #DBEAFE; color: #1E40AF; }
+    .tag-mint { background: #D1FAE5; color: #065F46; }
+    .tag-orange { background: #FFEDD5; color: #9A3412; }
+
+    .lobby-card h2 {
+      font-size: 1.38rem;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      margin-top: 6px;
+    }
+    .lobby-card p {
+      font-size: 0.95rem;
+      color: var(--ink-sub);
+      line-height: 1.6;
+      margin-top: 6px;
+    }
+
+    .join-code-row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+    .code-input {
+      flex: 1;
+      min-width: 0;
+      border: 2.5px solid var(--ink);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 1.25rem;
+      font-weight: 900;
+      text-align: center;
+      letter-spacing: 4px;
+      font-variant-numeric: tabular-nums;
+      background: #F8FAFC;
+      color: var(--ink);
+      outline: none;
+    }
+    .code-input:focus {
+      background: #ffffff;
+      border-color: var(--mint);
+      box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.18);
+    }
+    .code-input::placeholder {
+      font-size: 0.92rem;
+      letter-spacing: 0;
+      color: var(--ink-muted);
+      font-weight: 700;
+    }
+
+    /* =========================================================
+       VIEW 2: 도전자 무대 화면 (전자칠판 / 짝꿍 도전자)
+       ========================================================= */
+    .stage-shell {
+      background: var(--bg-stage);
+      border: 3px solid var(--ink);
+      border-radius: 26px;
+      padding: 16px 22px 20px;
+      box-shadow: 0 10px 0 var(--ink);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+    }
+
+    /* 상단 진행 바 (20라운드 스텝) */
+    .stage-topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding-bottom: 10px;
+      border-bottom: 2px dashed var(--line-strong);
+    }
+    .round-pill-big {
+      background: var(--ink);
+      color: #ffffff;
+      padding: 6px 16px;
+      border-radius: 999px;
+      font-size: 1rem;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .round-dots {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .r-dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid var(--line-strong);
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.68rem;
+      font-weight: 900;
+      color: var(--ink-muted);
+      transition: all 0.2s;
+    }
+    .r-dot.current {
+      border-color: var(--blue);
+      background: var(--blue-soft);
+      color: var(--blue);
+      transform: scale(1.18);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    }
+    .r-dot.win {
+      background: var(--gold);
+      border-color: var(--gold-dark);
+      color: #fff;
+    }
+    .r-dot.lose {
+      background: #E2E8F0;
+      border-color: #94A3B8;
+      color: #475569;
+    }
+
+    .score-pill {
+      background: var(--gold-soft);
+      border: 2px solid var(--gold);
+      color: var(--gold-dark);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-weight: 900;
+      font-size: 0.92rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 사회자 몬티 무대 캐릭터 & 말풍선 */
+    .monty-banner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: #ffffff;
+      border: 2.5px solid var(--ink);
+      border-radius: 20px;
+      padding: 10px 18px;
+      box-shadow: 0 4px 0 rgba(15, 23, 42, 0.08);
+    }
+    .monty-character-wrap {
+      width: 76px;
+      height: 76px;
+      flex-shrink: 0;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    /* Take the L 촐싹 댄스 애니메이션! */
+    .monty-character-wrap.dance-l {
+      animation: montyTakeTheL 0.36s infinite alternate ease-in-out;
+      transform-origin: 50% 85%;
+    }
+    @keyframes montyTakeTheL {
+      0% { transform: rotate(-11deg) translateY(0px) scale(1.05); }
+      100% { transform: rotate(11deg) translateY(-6px) scale(1.05); }
+    }
+    /* 승리 Victory W 점프! */
+    .monty-character-wrap.dance-w {
+      animation: montyVictoryW 0.38s infinite alternate ease-in-out;
+    }
+    @keyframes montyVictoryW {
+      0% { transform: translateY(2px) scale(1); }
+      100% { transform: translateY(-10px) scale(1.1); }
+    }
+
+    .monty-speech {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .monty-name-tag {
+      font-size: 0.75rem;
+      font-weight: 900;
+      color: var(--purple);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .monty-dialogue {
+      font-size: clamp(1rem, 1.8vw, 1.25rem);
+      font-weight: 800;
+      color: var(--ink);
+      line-height: 1.4;
+      word-break: keep-all;
+    }
+
+    /* 3개의 입체 쇼케이스 문 아레나 */
+    .doors-stage-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(160px, 260px));
+      justify-content: center;
+      gap: clamp(14px, 2.5vw, 30px);
+      padding: 6px 0 4px;
+      perspective: 1400px;
+    }
+
+    .door-unit {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+    }
+
+    .door-casing {
+      width: 100%;
+      aspect-ratio: 1 / 1.52;
+      max-height: clamp(220px, 38vh, 360px);
+      background: #1E293B;
+      border: 3.5px solid var(--ink);
+      border-radius: 22px 22px 8px 8px;
+      padding: 8px 8px 0 8px;
+      position: relative;
+      cursor: pointer;
+      box-shadow: 0 10px 0 rgba(15, 23, 42, 0.14);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s;
+    }
+    .door-casing:hover {
+      transform: translateY(-4px);
+    }
+
+    /* 문 뒤 실내 세트장 */
+    .door-room {
+      position: absolute;
+      inset: 10px 10px 0 10px;
+      background: radial-gradient(circle at 50% 35%, #FFFBEB 0%, #F1F5F9 75%, #CBD5E1 100%);
+      border-radius: 15px 15px 0 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      overflow: hidden;
+      z-index: 1;
+    }
+    .door-room.room-car-glow {
+      background: radial-gradient(circle at 50% 40%, #FEF08A 0%, #FDE047 45%, #F59E0B 100%);
+    }
+    .door-room-svg {
+      width: 86%;
+      max-width: 165px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .door-room-caption {
+      margin-top: 8px;
+      font-size: 1rem;
+      font-weight: 900;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--ink);
+      border: 2px solid var(--ink);
+    }
+
+    /* 회전하는 입체 문짝 */
+    .door-leaf {
+      position: absolute;
+      inset: 10px 10px 0 10px;
+      border-radius: 15px 15px 0 0;
+      z-index: 3;
+      transform-origin: left center;
+      transition: transform 0.52s cubic-bezier(0.34, 1.25, 0.64, 1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 22px 16px 26px;
+      border: 3px solid rgba(255,255,255,0.35);
+      box-shadow: inset 0 2px 0 rgba(255,255,255,0.45), 4px 0 14px rgba(15, 23, 42, 0.25);
+    }
+    /* 문 1, 2, 3 개성 있는 컬러 */
+    .door-color-1 { background: linear-gradient(160deg, #3B82F6 0%, #1D4ED8 100%); }
+    .door-color-2 { background: linear-gradient(160deg, #10B981 0%, #047857 100%); }
+    .door-color-3 { background: linear-gradient(160deg, #F97316 0%, #C2410C 100%); }
+
+    /* 문 몰딩 액자 디테일 */
+    .door-molding-top {
+      width: 82%;
+      flex: 1;
+      max-height: 48%;
+      border: 3px solid rgba(255, 255, 255, 0.35);
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .door-molding-bottom {
+      width: 82%;
+      height: 30%;
+      border: 3px solid rgba(255, 255, 255, 0.28);
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.08);
+    }
+
+    .door-num-badge {
+      width: 62px;
+      height: 62px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #FEF08A 0%, #F59E0B 100%);
+      border: 3.5px solid var(--ink);
+      box-shadow: 0 4px 0 var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: 900;
+      color: var(--ink);
+    }
+
+    .door-handle {
+      position: absolute;
+      right: 14px;
+      top: 54%;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #FEF9C3, #D97706);
+      border: 2.5px solid var(--ink);
+      box-shadow: 0 3px 0 rgba(0,0,0,0.35);
+    }
+
+    /* 문 상태 변화 */
+    .door-unit.is-selected .door-casing {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.35), 0 12px 0 rgba(15, 23, 42, 0.14);
+      transform: translateY(-6px);
+    }
+    .door-unit.is-shaking .door-casing {
+      animation: doorSuspense 0.11s infinite alternate;
+    }
+    @keyframes doorSuspense {
+      0% { transform: translateY(-6px) rotate(-1.2deg); }
+      100% { transform: translateY(-6px) rotate(1.2deg); }
+    }
+    .door-unit.is-open .door-leaf {
+      transform: rotateY(-112deg);
+    }
+
+    /* 문 하단 상태 라벨 */
+    .door-status-pill {
+      font-size: 0.92rem;
+      font-weight: 900;
+      padding: 6px 16px;
+      border-radius: 999px;
+      background: #ffffff;
+      border: 2px solid var(--line-strong);
+      color: var(--ink-sub);
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-align: center;
+    }
+    .door-status-pill.pill-picked {
+      background: var(--gold);
+      border-color: var(--ink);
+      color: var(--ink);
+      box-shadow: 0 3px 0 var(--ink);
+    }
+    .door-status-pill.pill-goat-out {
+      background: var(--red-soft);
+      border-color: #FCA5A5;
+      color: var(--red-dark);
+    }
+    .door-status-pill.pill-switch-hint {
+      background: var(--blue-soft);
+      border-color: var(--blue);
+      color: var(--blue-dark);
+      animation: bounceHint 0.8s infinite alternate;
+    }
+    @keyframes bounceHint {
+      from { transform: translateY(0); }
+      to { transform: translateY(-4px); }
+    }
+
+    /* 하단 액션 버튼 영역 */
+    .stage-action-bar {
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .btn-choice-big {
+      min-width: 220px;
+      padding: 15px 26px;
+      font-size: 1.12rem;
+      border-radius: 18px;
+    }
+
+    /* 4K / 초고해상도 디스플레이 반응형 최적화 */
+    @media (min-width: 1800px) {
+      main {
+        max-width: 1680px;
+      }
+      .doors-stage-grid {
+        grid-template-columns: repeat(3, minmax(200px, 320px));
+        gap: 36px;
+      }
+      .door-casing {
+        max-height: 420px;
+      }
+      .monty-banner {
+        padding: 14px 24px;
+      }
+      .monty-dialogue {
+        font-size: 1.35rem;
+      }
+    }
+
+    /* =========================================================
+       VIEW 3: 관전자 엑스레이 투시 & 실시간 누적 화면 (아이들 태블릿)
+       ========================================================= */
+    .watcher-header-bar {
+      background: #ffffff;
+      border: 2.5px solid var(--ink);
+      border-radius: 20px;
+      padding: 14px 20px;
+      box-shadow: 0 6px 0 var(--ink);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .watcher-live-status {
+      font-size: 1.08rem;
+      font-weight: 900;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* 엑스레이 투시 무대 */
+    .xray-stage-card {
+      background: linear-gradient(180deg, #0F172A 0%, #1E293B 100%);
+      border: 3px solid var(--ink);
+      border-radius: 26px;
+      padding: 20px 24px 24px;
+      color: #ffffff;
+      box-shadow: 0 10px 0 var(--ink);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .xray-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .xray-badge {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1.5px solid #34D399;
+      color: #6EE7B7;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 900;
+      letter-spacing: 0.3px;
+    }
+    .xray-live-narration {
+      font-size: 1.12rem;
+      font-weight: 800;
+      color: #FDE047;
+    }
+
+    .xray-doors-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 230px));
+      justify-content: center;
+      gap: clamp(12px, 3vw, 28px);
+    }
+
+    .xray-door-box {
+      background: rgba(30, 41, 59, 0.9);
+      border: 2.5px dashed #475569;
+      border-radius: 20px;
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+      transition: all 0.25s ease;
+    }
+    .xray-door-box.has-car {
+      background: radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 0.26) 0%, rgba(30, 41, 59, 0.95) 80%);
+      border-color: rgba(251, 191, 36, 0.65);
+    }
+    .xray-door-box.challenger-picked {
+      border-style: solid;
+      border-width: 3.5px;
+      border-color: #38BDF8;
+      box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.3), 0 0 25px rgba(56, 189, 248, 0.35);
+      transform: translateY(-4px);
+    }
+    .xray-door-box.host-eliminated {
+      opacity: 0.45;
+      filter: grayscale(0.4);
+    }
+
+    .xray-door-num {
+      font-size: 0.85rem;
+      font-weight: 900;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      color: #E2E8F0;
+    }
+    .xray-svg-holder {
+      width: 100%;
+      max-width: 125px;
+      height: 92px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .xray-truth-tag {
+      font-size: 0.88rem;
+      font-weight: 900;
+      padding: 4px 12px;
+      border-radius: 8px;
+    }
+    .truth-car { background: #F59E0B; color: #0F172A; }
+    .truth-goat { background: #334155; color: #CBD5E1; }
+
+    .xray-action-tag {
+      min-height: 28px;
+      font-size: 0.84rem;
+      font-weight: 900;
+      padding: 4px 10px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* 실시간 누적 통계 보드 (바꿨을 때 vs 유지했을 때 — M/N & ≈ 퍼센트) */
+    .stats-compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    @media (max-width: 760px) {
+      .stats-compare-grid { grid-template-columns: 1fr; }
+    }
+
+    .strategy-stat-card {
+      background: #ffffff;
+      border: 2.5px solid var(--ink);
+      border-radius: 24px;
+      padding: 20px 22px;
+      box-shadow: 0 7px 0 var(--ink);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .strategy-stat-card.switch-theme {
+      border-color: var(--blue-dark);
+      box-shadow: 0 7px 0 var(--blue-dark);
+    }
+
+    .strat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .strat-title {
+      font-size: 1.15rem;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 교과서 정통 세로 분수 M/N & 근삿값 ≈ 퍼센트 블록 */
+    .math-equation-panel {
+      background: #F8FAFC;
+      border: 2px solid var(--line-strong);
+      border-radius: 18px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+    .switch-theme .math-equation-panel {
+      background: var(--blue-soft);
+      border-color: #BFDBFE;
+    }
+
+    .fraction-widget {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 58px;
+    }
+    .frac-top {
+      font-size: 1.55rem;
+      font-weight: 900;
+      color: var(--blue);
+      line-height: 1.1;
+      padding-bottom: 4px;
+    }
+    .frac-line {
+      width: 100%;
+      height: 3px;
+      background: var(--ink);
+      border-radius: 2px;
+    }
+    .frac-bottom {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--ink-sub);
+      line-height: 1.1;
+      padding-top: 4px;
+    }
+    .frac-desc {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--ink-muted);
+      margin-top: 4px;
+    }
+
+    .eq-sign {
+      font-size: 1.8rem;
+      font-weight: 900;
+      color: var(--ink-sub);
+    }
+
+    .pct-big {
+      font-size: 2.25rem;
+      font-weight: 900;
+      color: var(--ink);
+      letter-spacing: -1px;
+    }
+    .switch-theme .pct-big {
+      color: var(--blue-dark);
+    }
+
+    /* 바꿨을 때 / 유지했을 때 실시간 자동차·염소 누적 칩 트레이 */
+    .chips-tray-label {
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: var(--ink-muted);
+    }
+    .chips-tray {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 42px;
+      padding: 8px;
+      background: #F8FAFC;
+      border-radius: 12px;
+      border: 1.5px dashed var(--line-strong);
+      align-content: flex-start;
+    }
+    .outcome-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 9px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 800;
+      animation: chipPop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes chipPop {
+      from { transform: scale(0.5); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .chip-car {
+      background: #FEF3C7;
+      border: 1.5px solid #F59E0B;
+      color: #92400E;
+    }
+    .chip-goat {
+      background: #E2E8F0;
+      border: 1.5px solid #94A3B8;
+      color: #334155;
+    }
+
+    /* 20회 챌린지 미션 게이지 바 (66.6% 초과 기준) */
+    .quest-card {
+      background: #ffffff;
+      border: 2.5px solid var(--ink);
+      border-radius: 22px;
+      padding: 16px 20px;
+      box-shadow: 0 6px 0 var(--ink);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .quest-track {
+      height: 22px;
+      background: #E2E8F0;
+      border-radius: 999px;
+      border: 2px solid var(--ink);
+      position: relative;
+      overflow: visible;
+    }
+    .quest-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #3B82F6 0%, #10B981 65%, #F59E0B 100%);
+      transition: width 0.35s ease;
+    }
+    .quest-threshold-pin {
+      position: absolute;
+      top: -8px;
+      bottom: -8px;
+      left: 66.66%;
+      width: 3px;
+      background: var(--red);
+      z-index: 4;
+    }
+    .quest-threshold-label {
+      position: absolute;
+      top: -26px;
+      left: 66.66%;
+      transform: translateX(-50%);
+      background: var(--red);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 900;
+      padding: 2px 7px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    /* =========================================================
+       1인 실험실 전용 초고속 컨트롤 바 & 수렴 그래프
+       ========================================================= */
+    .fast-sim-toolbar {
+      background: #ffffff;
+      border: 2.5px solid var(--ink);
+      border-radius: 22px;
+      padding: 18px 22px;
+      box-shadow: 0 6px 0 var(--ink);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .convergence-card {
+      background: #ffffff;
+      border: 2.5px solid var(--ink);
+      border-radius: 22px;
+      padding: 18px 22px;
+      box-shadow: 0 6px 0 var(--ink);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .chart-wrap {
+      width: 100%;
+      height: 160px;
+      background: #F8FAFC;
+      border: 1.5px solid var(--line-strong);
+      border-radius: 14px;
+      position: relative;
+    }
+    #labChartCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* =========================================================
+       모달 공통 (방 코드 QR, 20회 최종 성적표, 교사 히든 설정)
+       ========================================================= */
+    .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(11, 15, 25, 0.75);
-      backdrop-filter: blur(8px);
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(5px);
       display: none;
       align-items: center;
       justify-content: center;
       z-index: 500;
       padding: 20px;
     }
-    .modal-overlay.active { display: flex; }
+    .modal-backdrop.open { display: flex; }
 
-    .modal-sheet {
-      background: #1e293b;
-      border: 1px solid var(--card-border);
-      border-radius: 24px;
-      max-width: 620px;
+    .modal-card {
+      background: #ffffff;
+      border: 3px solid var(--ink);
+      border-radius: 28px;
+      max-width: 560px;
       width: 100%;
-      padding: 30px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      padding: 28px;
+      box-shadow: 0 14px 0 var(--ink);
       display: flex;
       flex-direction: column;
       gap: 18px;
+      max-height: 92vh;
+      overflow-y: auto;
+    }
+
+    .big-room-digits {
+      font-size: 3.1rem;
+      font-weight: 900;
+      letter-spacing: 10px;
+      color: var(--blue-dark);
+      background: var(--blue-soft);
+      border: 2.5px solid var(--blue);
+      border-radius: 18px;
+      padding: 12px 20px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .qr-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 16px;
+      background: #ffffff;
+      border: 2px solid var(--line);
+      border-radius: 18px;
+    }
+    .qr-box img, .qr-box svg {
+      width: 180px !important;
+      height: 180px !important;
+      display: block;
+    }
+
+    .report-ticket {
+      border: 3px dashed var(--gold-dark);
+      background: linear-gradient(135deg, #FEF9C3 0%, #FDE68A 100%);
+      border-radius: 22px;
+      padding: 22px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .report-ticket.failed {
+      border-color: #94A3B8;
+      background: #F1F5F9;
+    }
+
+    /* 염소 풀잎 씹기 귀여운 애니메이션 */
+    @keyframes chewGrass {
+      0%, 100% { transform: rotate(-6deg); }
+      50% { transform: rotate(10deg); }
+    }
+    .goat-grass {
+      transform-origin: 50% 20%;
+      animation: chewGrass 0.45s infinite ease-in-out;
+    }
+    @keyframes carBounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+    .car-body-anim {
+      animation: carBounce 0.55s infinite ease-in-out;
     }
   </style>
 </head>
 <body>
 
-  <!-- Fullscreen Particle Confetti Canvas -->
   <canvas id="confettiCanvas"></canvas>
 
-  <!-- Top Header Nav -->
+  <!-- 상단 글로벌 헤더 (학생에게 설정 버튼 완전 비노출, 로고 5회 클릭 시 교사 설정) -->
   <header>
-    <div class="brand" onclick="handleBrandClick()">
-      <div style="font-size: 1.6rem;">🚪</div>
-      <div class="brand-title">몬티홀 확률 실험실</div>
-      <span class="brand-tag">TV 쇼 무대</span>
+    <div class="brand" onclick="onBrandSecretClick()">
+      <div class="brand-logo">🚪</div>
+      <span class="brand-name">몬티홀 쇼!</span>
+      <span class="brand-pill">확률 실험실</span>
     </div>
 
-    <div class="nav-actions">
-      <!-- 처음으로 뒤로가기 버튼 -->
-      <button id="btnHomeNav" class="btn-nav" onclick="goHome()" style="display: none;">
-        <span>🏠 처음으로</span>
-      </button>
-
-      <!-- 사운드 토글 -->
-      <button id="btnSoundToggle" class="btn-nav" onclick="toggleSound()">
-        <span id="soundIcon">🔊</span>
-      </button>
-
-      <!-- 실시간 연결 뱃지 -->
-      <div id="connectionBadge" class="btn-nav" style="display: none; border-color: #10b981; color: #10b981;">
-        ● 실시간 짝꿍 연결됨
+    <div class="header-controls">
+      <!-- 실시간 방 코드 & 접속자 배지 -->
+      <div id="headerRoomChip" class="room-chip" onclick="openRoomShareModal()">
+        <span class="live-dot"></span>
+        <span id="headerRoomText">방 0000 · 연결 중</span>
       </div>
+
+      <!-- 새로 시작(초기화) 버튼 (관전자 화면에서는 숨김) -->
+      <button id="btnHeaderReset" class="btn-3d btn-soft-red" style="display: none;" onclick="confirmResetSession()">
+        🔄 초기화
+      </button>
+
+      <!-- 효과음 토글 -->
+      <button class="btn-3d" onclick="toggleAudio()" title="효과음 켜기/끄기">
+        <span id="audioToggleIcon">🔊</span>
+      </button>
+
+      <!-- 처음으로 돌아가기 버튼 -->
+      <button id="btnHeaderHome" class="btn-3d" style="display: none;" onclick="returnToHome()">
+        🏠 처음으로
+      </button>
     </div>
   </header>
 
-  <!-- Main View Frame -->
   <main>
 
-    <!-- VIEW 1: 모드 선택 대기실 -->
-    <section id="welcomeView" class="view-panel active">
-      <div class="hero-card">
-        <div class="hero-content">
-          <div style="font-size: 4rem;">🚗 🚪 🐐</div>
-          <h1 class="hero-title">바꿀 것인가, 그대로 둘 것인가?</h1>
-          <p class="hero-desc">
-            세 개의 문 중 하나 뒤에는 <strong>새 자동차</strong>가, 둘 뒤에는 <strong>염소</strong>가 있습니다.<br>
-            사회자가 염소 문 하나를 열어준 순간, <strong>선택을 바꾸는 것이 과연 2배 유리할까요?</strong><br>
-            직접 실험하여 '대수의 법칙'으로 확률의 진실을 밝혀보세요!
-          </p>
+    <!-- =======================================================
+         VIEW 1: 홈 로비 화면
+         ======================================================= -->
+    <section id="homeView" class="view-section active">
+      <div class="lobby-hero">
+        <div class="lobby-illust" id="lobbyHeroIllust"></div>
+        <h1 class="lobby-title">선택을 바꿀까, 그대로 지킬까?</h1>
+        <p class="lobby-sub">
+          세 개의 문 중 자동차는 단 한 대! 내가 문을 고른 뒤 사회자가 <strong>염소 문 하나를 열어줍니다.</strong><br>
+          앞에 나온 도전자는 문 뒤를 모르고, <strong>자리의 친구들은 문 뒤를 실시간 투시로 모두 지켜봅니다!</strong>
+        </p>
+        <div class="snack-rule-banner" id="lobbySnackRuleText">
+          🎯 20회 챌린지 미션: 정답률 66.6% 초과 (20번 중 14번 이상 자동차 획득!) 도전!
+        </div>
+      </div>
 
-          <div class="mode-select-grid">
-            <!-- 짝꿍 모드 -->
-            <div class="mode-card glow-gold" onclick="startPairMode()">
-              <span class="mode-badge gold">수업 추천 모드</span>
-              <h3>👥 짝꿍과 함께 실험하기</h3>
-              <p>
-                같은 모둠 짝꿍과 1:1 실시간 화면이 연결됩니다.<br>
-                한 명은 '도전자', 한 명은 '공식 검증관'이 되어 조작 없이 정직하게 20회를 검증합니다.
-              </p>
-            </div>
-
-            <!-- 1인 모드 -->
-            <div class="mode-card" onclick="startSoloMode()">
-              <span class="mode-badge">가정 자습 / 빠른 실험</span>
-              <h3>👤 혼자서 초고속 실험하기</h3>
-              <p>
-                대기 시간 없이 혼자서 20회, 50회, 100회까지 초고속으로 시뮬레이션하고 통계를 확인합니다.
-              </p>
-            </div>
+      <div class="lobby-cards">
+        <!-- 카드 1: 도전자 무대 (전자칠판 / 2인 중 고르는 학생) -->
+        <div class="lobby-card card-stage">
+          <div>
+            <span class="card-top-tag tag-blue">전자칠판 · 짝꿍 중 도전자</span>
+            <h2>📺 도전자 무대 열기</h2>
+            <p>
+              앞으로 나온 학생(또는 짝꿍 중 고르는 사람)이 <strong>문 뒤를 모르는 상태</strong>에서 직접 문을 선택하고 바꾸기/유지를 결정합니다.
+            </p>
           </div>
+          <button class="btn-3d btn-blue" style="width: 100%; padding: 15px; font-size: 1.05rem;" onclick="enterStageHostMode()">
+            🚪 무대 열기 (방 코드 생성) ➔
+          </button>
+        </div>
+
+        <!-- 카드 2: 관전자 투시 화면 (반 아이들 / 2인 중 확인하는 학생) -->
+        <div class="lobby-card card-watcher">
+          <div>
+            <span class="card-top-tag tag-mint">반 친구들 · 짝꿍 중 검증관</span>
+            <h2>🔎 관전자 투시 화면</h2>
+            <p>
+              도전자가 고르는 문 뒤에 <strong>실제로 자동차가 있는지 염소가 있는지 실시간 투시</strong>로 다 보면서 바꿈·유지 결과를 누적 확인합니다!
+            </p>
+          </div>
+          <div class="join-code-row">
+            <input type="text" id="joinRoomInput" class="code-input" maxlength="4" inputmode="numeric" placeholder="4자리 방 코드" onkeydown="if(event.key==='Enter') enterWatcherModeFromInput()">
+            <button class="btn-3d btn-mint" style="padding: 12px 18px; font-size: 1rem; white-space: nowrap;" onclick="enterWatcherModeFromInput()">
+              입장 ➔
+            </button>
+          </div>
+        </div>
+
+        <!-- 카드 3: 1인 자유 & 초고속 시뮬레이션 -->
+        <div class="lobby-card card-lab">
+          <div>
+            <span class="card-top-tag tag-orange">개인 탐구 · 교사 마무리 시연</span>
+            <h2>⚡ 1인 실험 & 초고속 검증</h2>
+            <p>
+              혼자서 연습해보거나, <strong>'무조건 바꾸기 20회' vs '무조건 유지하기 20회'</strong> 초고속 무대 시뮬레이션으로 확률을 즉시 비교합니다.
+            </p>
+          </div>
+          <button class="btn-3d btn-gold" style="width: 100%; padding: 15px; font-size: 1.05rem;" onclick="enterSoloLabMode()">
+            ⚡ 1인 실험실 시작하기 ➔
+          </button>
         </div>
       </div>
     </section>
 
 
-    <!-- VIEW 2: 게임 시뮬레이션 무대 -->
-    <section id="gameView" class="view-panel">
-      <div class="sim-layout">
+    <!-- =======================================================
+         VIEW 2: 도전자 무대 화면 (#stageView) & 1인 실험실 공용 무대
+         ======================================================= -->
+    <section id="stageView" class="view-section">
 
-        <!-- 게임 스테이지 메인 -->
-        <div id="mainStageCard" class="stage-card">
-
-          <!-- 사회자 몬티 배너 & 킹받는 말풍선 -->
-          <div class="host-stage">
-            <div id="hostAvatar" class="host-avatar-box">
-              <span id="hostEmoji">🤵</span>
-              <span class="host-badge-l">L</span>
-            </div>
-            <div id="hostSpeechBubble" class="host-bubble">
-              "자, 인생 역전의 기회! 행운의 여신은 몇 번 문 뒤에 있을까? 문을 하나 골라봐!"
-            </div>
-          </div>
-
-          <!-- 라운드 및 역할 표시줄 -->
-          <div style="display: flex; justify-content: space-between; width: 100%; font-size: 0.95rem; font-weight: 700; color: var(--text-muted);">
-            <span id="playerRoleDisplay">🎮 내 차례 (플레이어)</span>
-            <span id="roundCounter">시행: 1 / 20회</span>
-          </div>
-
-          <!-- 3 Doors Arena -->
-          <div class="doors-arena">
-            <!-- 1번 문 -->
-            <div id="slot1" class="door-slot" onclick="onDoorSelected(1)">
-              <div class="door-frame">
-                <div class="door-interior">
-                  <span id="prize1">🐐</span>
-                  <span id="title1" class="prize-title">염소</span>
-                </div>
-                <div class="door-panel">
-                  <div class="door-emblem">1</div>
-                  <div class="door-knob"></div>
-                </div>
-              </div>
-              <div id="tag1" class="door-indicator">1번 문</div>
-            </div>
-
-            <!-- 2번 문 -->
-            <div id="slot2" class="door-slot" onclick="onDoorSelected(2)">
-              <div class="door-frame">
-                <div class="door-interior">
-                  <span id="prize2">🚗</span>
-                  <span id="title2" class="prize-title">자동차</span>
-                </div>
-                <div class="door-panel">
-                  <div class="door-emblem">2</div>
-                  <div class="door-knob"></div>
-                </div>
-              </div>
-              <div id="tag2" class="door-indicator">2번 문</div>
-            </div>
-
-            <!-- 3번 문 -->
-            <div id="slot3" class="door-slot" onclick="onDoorSelected(3)">
-              <div class="door-frame">
-                <div class="door-interior">
-                  <span id="prize3">🐐</span>
-                  <span id="title3" class="prize-title">염소</span>
-                </div>
-                <div class="door-panel">
-                  <div class="door-emblem">3</div>
-                  <div class="door-knob"></div>
-                </div>
-              </div>
-              <div id="tag3" class="door-indicator">3번 문</div>
-            </div>
-          </div>
-
-          <!-- 결정 덱 (바꾸기 vs 유지하기) -->
-          <div id="decisionDeck" class="decision-deck" style="display: none;">
-            <button class="btn-act btn-stay" onclick="finalizeChoice(false)">
-              🔒 그대로 유지 (S)
-            </button>
-            <button class="btn-act btn-switch" onclick="finalizeChoice(true)">
-              🔄 다른 문으로 바꾸기 (R)
-            </button>
-          </div>
-
-          <!-- 다음 판 진행 버튼 -->
-          <div id="nextRoundDeck" style="display: none; width: 100%; justify-content: center;">
-            <button class="btn-act btn-next-round" onclick="nextRound()">
-              다음 판 시작하기 (Space) ➔
-            </button>
-          </div>
+      <!-- 1인 실험실 전용 초고속 무대 실행 툴바 -->
+      <div id="labFastToolbar" class="fast-sim-toolbar" style="display: none;">
+        <div style="display: flex; flex-direction: column; gap: 3px;">
+          <span style="font-weight: 900; font-size: 1.05rem;">⚡ 초고속 전략 고정 실험 (무대 문 동작 연동)</span>
+          <span style="font-size: 0.84rem; color: var(--ink-sub);">한 가지 전략만 끝까지 고수했을 때 실제 문 선택과 당첨 확률이 어떻게 달라지는지 눈으로 확인하세요!</span>
         </div>
-
-
-        <!-- 우측 수학 & 통계 사이드바 -->
-        <div class="sidebar-deck">
-
-          <!-- 교과서 연계 수학적 확률 & 분수 표기 카드 -->
-          <div class="stat-card">
-            <div class="stat-title">
-              <span>📐 통계적 확률 (교과서 표기)</span>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span id="totalTrialsCount" style="color: #38bdf8; font-weight: 800;">0회</span>
-                <!-- 초기화 버튼 (요청 반영) -->
-                <button class="btn-nav" style="padding: 3px 8px; font-size: 0.75rem; background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.4); color: #fca5a5;" onclick="resetAllStats()">
-                  🔄 초기화
-                </button>
-              </div>
-            </div>
-
-            <div class="math-grid">
-              <!-- 바꿨을 때 -->
-              <div class="math-column glow-switch">
-                <div class="math-col-label">
-                  <span>🔄 [바꿨을 때]</span>
-                </div>
-                <div class="math-formula-box">
-                  <div class="math-fraction">
-                    <span class="numerator" id="switchNum">0</span>
-                    <span class="fraction-bar"></span>
-                    <span class="denominator" id="switchDenom">0</span>
-                  </div>
-                  <span class="math-approx-sym" id="switchSym">=</span>
-                  <div class="math-percentage" id="switchPercent">0%</div>
-                </div>
-              </div>
-
-              <!-- 유지했을 때 -->
-              <div class="math-column">
-                <div class="math-col-label">
-                  <span>🔒 [유지했을 때]</span>
-                </div>
-                <div class="math-formula-box">
-                  <div class="math-fraction">
-                    <span class="numerator" id="stayNum">0</span>
-                    <span class="fraction-bar"></span>
-                    <span class="denominator" id="stayDenom">0</span>
-                  </div>
-                  <span class="math-approx-sym" id="staySym">=</span>
-                  <div class="math-percentage" id="stayPercent">0%</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- "바꾸면 정확히 2배!" 배수 인디케이터 배지 -->
-            <div id="ratioMultiplierBadge" class="ratio-multiplier-badge">
-              <span>💡 이론적 확률: 바꾸기(66.7%) = 유지하기(33.3%)의 정확히 2.0배!</span>
-            </div>
-          </div>
-
-          <!-- 대수의 법칙: 누적 상대도수 수렴 그래프 -->
-          <div class="stat-card">
-            <div class="stat-title">
-              <span>📈 대수의 법칙 (상대도수 수렴)</span>
-              <span style="font-size: 0.78rem; color: #a5b4fc;">이론치: 66.7% vs 33.3%</span>
-            </div>
-            <div class="canvas-container">
-              <canvas id="convergenceCanvas"></canvas>
-            </div>
-          </div>
-
-          <!-- 초고속 20회 자동 전략 실행 (무대 고속 룰렛 애니메이션 연동!) -->
-          <div class="stat-card">
-            <div class="stat-title">
-              <span>⚡ 초고속 무대 전략 실험</span>
-              <span id="fastRunIndicator" style="font-size: 0.75rem; color: #38bdf8; display: none;">시뮬레이션 진행 중...</span>
-            </div>
-            <div class="auto-run-group">
-              <button id="btnAutoSwitch" class="btn-auto" onclick="runAnimatedFastSimulation('SWITCH', 20)">
-                <span>⚡ '무조건 바꾸기' 20회 고수</span>
-                <span class="tag">무대 룰렛 연출</span>
-              </button>
-              <button id="btnAutoStay" class="btn-auto" onclick="runAnimatedFastSimulation('STAY', 20)">
-                <span>⚡ '무조건 유지하기' 20회 고수</span>
-                <span class="tag">무대 룰렛 연출</span>
-              </button>
-              <button id="btnAuto100" class="btn-auto" onclick="runAnimatedFastSimulation('HYBRID', 50)">
-                <span>🚀 50회 폭풍 슬롯머신</span>
-                <span class="tag">대수의 법칙</span>
-              </button>
-            </div>
-          </div>
-
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="btnFastSwitch20" class="btn-3d btn-blue" onclick="startVisualAutoRun('SWITCH', 20)">
+            🔄 '무조건 바꾸기' 20회
+          </button>
+          <button id="btnFastStay20" class="btn-3d" onclick="startVisualAutoRun('STAY', 20)">
+            🔒 '무조건 유지하기' 20회
+          </button>
+          <button id="btnFastStop" class="btn-3d btn-soft-red" style="display: none;" onclick="stopVisualAutoRun()">
+            ⏹ 정지
+          </button>
         </div>
-
       </div>
+
+      <!-- 메인 쇼 무대 -->
+      <div class="stage-shell">
+        <div class="stage-topbar">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <span class="round-pill-big" id="stageRoundBadge">ROUND 1 / 20</span>
+            <button id="btnStageInvite" class="btn-3d" style="padding: 6px 12px; font-size: 0.82rem;" onclick="openRoomShareModal()">
+              📱 방 코드 / 관전자 초대 QR
+            </button>
+          </div>
+
+          <!-- 20회 스텝 도트 트랙 -->
+          <div id="stageRoundDots" class="round-dots"></div>
+
+          <div class="score-pill" id="stageScoreBadge">🚗 성공 0회</div>
+        </div>
+
+        <!-- 사회자 몬티 캐릭터 & 말풍선 -->
+        <div class="monty-banner">
+          <div id="montyCharBox" class="monty-character-wrap"></div>
+          <div class="monty-speech">
+            <span class="monty-name-tag">🎤 쇼호스트 몬티 (MONTY)</span>
+            <div id="montyDialogueText" class="monty-dialogue">
+              자, 세 개의 문 중 단 한 곳에만 슈퍼카가 있습니다! 느낌 오는 문을 터치해 보세요!
+            </div>
+          </div>
+        </div>
+
+        <!-- 입체 문 3개 -->
+        <div class="doors-stage-grid">
+          <!-- 1번 문 -->
+          <div id="stageDoorUnit1" class="door-unit" onclick="handleStageDoorTap(1)">
+            <div class="door-casing">
+              <div id="stageDoorRoom1" class="door-room">
+                <div id="stageDoorSvg1" class="door-room-svg"></div>
+                <div id="stageDoorCap1" class="door-room-caption" style="display:none;"></div>
+              </div>
+              <div class="door-leaf door-color-1">
+                <div class="door-molding-top">
+                  <div class="door-num-badge">1</div>
+                </div>
+                <div class="door-molding-bottom"></div>
+                <div class="door-handle"></div>
+              </div>
+            </div>
+            <div id="stageDoorPill1" class="door-status-pill">1번 문 터치하여 선택</div>
+          </div>
+
+          <!-- 2번 문 -->
+          <div id="stageDoorUnit2" class="door-unit" onclick="handleStageDoorTap(2)">
+            <div class="door-casing">
+              <div id="stageDoorRoom2" class="door-room">
+                <div id="stageDoorSvg2" class="door-room-svg"></div>
+                <div id="stageDoorCap2" class="door-room-caption" style="display:none;"></div>
+              </div>
+              <div class="door-leaf door-color-2">
+                <div class="door-molding-top">
+                  <div class="door-num-badge">2</div>
+                </div>
+                <div class="door-molding-bottom"></div>
+                <div class="door-handle"></div>
+              </div>
+            </div>
+            <div id="stageDoorPill2" class="door-status-pill">2번 문 터치하여 선택</div>
+          </div>
+
+          <!-- 3번 문 -->
+          <div id="stageDoorUnit3" class="door-unit" onclick="handleStageDoorTap(3)">
+            <div class="door-casing">
+              <div id="stageDoorRoom3" class="door-room">
+                <div id="stageDoorSvg3" class="door-room-svg"></div>
+                <div id="stageDoorCap3" class="door-room-caption" style="display:none;"></div>
+              </div>
+              <div class="door-leaf door-color-3">
+                <div class="door-molding-top">
+                  <div class="door-num-badge">3</div>
+                </div>
+                <div class="door-molding-bottom"></div>
+                <div class="door-handle"></div>
+              </div>
+            </div>
+            <div id="stageDoorPill3" class="door-status-pill">3번 문 터치하여 선택</div>
+          </div>
+        </div>
+
+        <!-- 하단 결정 버튼 / 다음 판 버튼 -->
+        <div class="stage-action-bar">
+          <div id="stageDecisionBtns" style="display: none; gap: 16px; flex-wrap: wrap; justify-content: center;">
+            <button id="btnDecideStay" class="btn-3d btn-choice-big" onclick="commitStageDecision(false)">
+              🔒 그대로 유지하기
+            </button>
+            <button id="btnDecideSwitch" class="btn-3d btn-blue btn-choice-big" onclick="commitStageDecision(true)">
+              🔄 남은 문으로 바꾸기!
+            </button>
+          </div>
+
+          <div id="stageNextBtns" style="display: none; gap: 12px; justify-content: center;">
+            <button id="btnNextRoundAction" class="btn-3d btn-gold btn-choice-big" onclick="advanceNextRound()">
+              다음 라운드 진행 ➔
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1인 실험실 모드에서만 하단에 실시간 분수 통계 + 수렴 그래프 함께 표시 -->
+      <div id="labStatsContainer" style="display: none; flex-direction: column; gap: 18px;">
+        <div id="labSharedStatsMount"></div>
+        <div class="convergence-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <span style="font-weight: 900; font-size: 1.05rem;">📈 시행 횟수에 따른 상대도수 수렴 그래프 (큰 수의 법칙)</span>
+            <span style="font-size: 0.82rem; font-weight: 800; color: var(--ink-sub);">파란 점선: 바꾸기 이론값(66.7%) · 회색 점선: 유지 이론값(33.3%)</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="labChartCanvas"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+
+    <!-- =======================================================
+         VIEW 3: 관전자 엑스레이 투시 & 실시간 누적 화면 (#watcherView)
+         ======================================================= -->
+    <section id="watcherView" class="view-section">
+
+      <!-- 상단 실시간 중계 헤더 -->
+      <div class="watcher-header-bar">
+        <div class="watcher-live-status">
+          <span class="live-dot"></span>
+          <span id="watcherRoomLabel">방 코드 ---- 실시간 관전 중</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span class="round-pill-big" id="watcherRoundBadge" style="font-size: 0.95rem; padding: 6px 14px;">ROUND 1 / 20</span>
+        </div>
+      </div>
+
+      <!-- 엑스레이 반투명 투시 무대 (문 뒤에 실제로 뭐가 있는지 다 보임!) -->
+      <div class="xray-stage-card">
+        <div class="xray-title-row">
+          <span class="xray-badge">🔎 관전자 전용 X-RAY 투시 화면 (도전자에게는 안 보여요!)</span>
+          <span id="watcherLiveNarration" class="xray-live-narration">도전자가 첫 번째 문을 고르기를 기다리는 중...</span>
+        </div>
+
+        <div class="xray-doors-grid">
+          <!-- 투시 문 1 -->
+          <div id="xrayDoor1" class="xray-door-box">
+            <span class="xray-door-num">1번 문 내부</span>
+            <div id="xraySvg1" class="xray-svg-holder"></div>
+            <span id="xrayTruth1" class="xray-truth-tag truth-goat">염소</span>
+            <div id="xrayAction1" class="xray-action-tag"></div>
+          </div>
+
+          <!-- 투시 문 2 -->
+          <div id="xrayDoor2" class="xray-door-box">
+            <span class="xray-door-num">2번 문 내부</span>
+            <div id="xraySvg2" class="xray-svg-holder"></div>
+            <span id="xrayTruth2" class="xray-truth-tag truth-car">★ 자동차!</span>
+            <div id="xrayAction2" class="xray-action-tag"></div>
+          </div>
+
+          <!-- 투시 문 3 -->
+          <div id="xrayDoor3" class="xray-door-box">
+            <span class="xray-door-num">3번 문 내부</span>
+            <div id="xraySvg3" class="xray-svg-holder"></div>
+            <span id="xrayTruth3" class="xray-truth-tag truth-goat">염소</span>
+            <div id="xrayAction3" class="xray-action-tag"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 실시간 바꿨을 때 vs 유지했을 때 분수(M/N) & 퍼센트(≈) & 아이콘 누적 보드 -->
+      <div id="watcherSharedStatsMount"></div>
+
+      <!-- 하단 20회 챌린지 미션 달성 게이지 -->
+      <div class="quest-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <span style="font-weight: 900; font-size: 1.05rem;">🎯 20회 챌린지 달성 현황</span>
+          <span id="watcherQuestSummary" style="font-weight: 900; font-size: 1rem; color: var(--blue-dark);">
+            전체 성공: 0 / 0 (0.0%)
+          </span>
+        </div>
+        <div style="padding-top: 18px; padding-bottom: 4px;">
+          <div class="quest-track">
+            <div id="watcherQuestFill" class="quest-fill" style="width: 0%;"></div>
+            <div id="watcherThresholdPin" class="quest-threshold-pin"></div>
+            <div id="watcherThresholdLabel" class="quest-threshold-label">목표 기준 66.6%↑</div>
+          </div>
+        </div>
+        <div id="watcherRoundHistoryDots" class="round-dots" style="padding-top: 4px;"></div>
+      </div>
+
     </section>
 
   </main>
 
 
-  <!-- 모달: 교사용 히든 설정 (타이틀 5회 클릭 시에만 노출) -->
-  <div id="hiddenAdminModal" class="modal-overlay">
-    <div class="modal-sheet">
-      <h3 style="font-size: 1.3rem; font-weight: 800;">🔒 교사용 설정 (Firebase 연동)</h3>
-      <p style="font-size: 0.9rem; color: var(--text-muted);">
-        학생들에게는 노출되지 않는 교사용 관리자 창입니다.
-      </p>
+  <!-- 공통 통계 보드 템플릿 (관전자 뷰 / 1인 실험실 뷰에서 공유 마운트) -->
+  <template id="sharedStatsTemplate">
+    <div class="stats-compare-grid">
+      <!-- 바꿨을 때 카드 -->
+      <div class="strategy-stat-card switch-theme">
+        <div class="strat-header">
+          <div class="strat-title">🔄 선택을 [바꿨을 때] 결과</div>
+          <span style="font-size: 0.8rem; font-weight: 800; color: var(--blue);">자동차 확률 비교</span>
+        </div>
 
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        <label style="font-size: 0.85rem; color: #94a3b8;">Firebase Database URL</label>
-        <input type="text" id="adminFbUrl" style="padding: 10px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; color: #fff;">
+        <div class="math-equation-panel">
+          <div class="fraction-widget">
+            <span class="frac-top js-sw-num">0</span>
+            <span class="frac-line"></span>
+            <span class="frac-bottom js-sw-den">0</span>
+            <span class="frac-desc">성공 / 바꾼 횟수</span>
+          </div>
+          <span class="eq-sign js-sw-sym">=</span>
+          <div class="pct-big js-sw-pct">0.0%</div>
+        </div>
+
+        <div class="chips-tray-label">실시간 바꿨을 때 당첨 기록 (자동차 vs 염소)</div>
+        <div class="chips-tray js-sw-chips">
+          <span style="font-size: 0.82rem; color: var(--ink-muted); padding: 4px;">아직 '바꾸기'를 선택한 기록이 없습니다.</span>
+        </div>
       </div>
 
-      <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px;">
-        <button class="btn-nav" onclick="closeAdminModal()">닫기</button>
-        <button class="btn-act btn-switch" style="padding: 10px 18px; font-size: 0.9rem;" onclick="saveAdminSettings()">저장</button>
+      <!-- 유지했을 때 카드 -->
+      <div class="strategy-stat-card">
+        <div class="strat-header">
+          <div class="strat-title">🔒 선택을 [유지했을 때] 결과</div>
+          <span style="font-size: 0.8rem; font-weight: 800; color: var(--ink-muted);">자동차 확률 비교</span>
+        </div>
+
+        <div class="math-equation-panel">
+          <div class="fraction-widget">
+            <span class="frac-top js-st-num" style="color: var(--ink);">0</span>
+            <span class="frac-line"></span>
+            <span class="frac-bottom js-st-den">0</span>
+            <span class="frac-desc">성공 / 유지 횟수</span>
+          </div>
+          <span class="eq-sign js-st-sym">=</span>
+          <div class="pct-big js-st-pct">0.0%</div>
+        </div>
+
+        <div class="chips-tray-label">실시간 유지했을 때 당첨 기록 (자동차 vs 염소)</div>
+        <div class="chips-tray js-st-chips">
+          <span style="font-size: 0.82rem; color: var(--ink-muted); padding: 4px;">아직 '유지하기'를 선택한 기록이 없습니다.</span>
+        </div>
+      </div>
+    </div>
+  </template>
+
+
+  <!-- =======================================================
+       모달 1: 방 코드 & 관전자 초대 QR 모달
+       ======================================================= -->
+  <div id="roomShareModal" class="modal-backdrop" onclick="if(event.target===this) closeRoomShareModal()">
+    <div class="modal-card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 1.35rem; font-weight: 900;">📡 관전자 투시 화면 연결하기</h3>
+        <button class="btn-3d" style="padding: 6px 12px;" onclick="closeRoomShareModal()">✕ 닫기</button>
+      </div>
+      <p style="font-size: 0.95rem; color: var(--ink-sub); line-height: 1.55;">
+        자리에 앉은 학생들(또는 맞은편 짝꿍)이 아래 <strong>QR 코드를 스캔</strong>하거나 <strong>4자리 방 코드</strong>를 입력하면 문 뒤가 보이는 투시 화면으로 실시간 연결됩니다!
+      </p>
+
+      <div class="big-room-digits" id="shareModalRoomCode">0000</div>
+
+      <div class="qr-box">
+        <div id="shareModalQrContainer"></div>
+        <span style="font-size: 0.8rem; color: var(--ink-muted); font-weight: 700;">카메라로 스캔하면 방 코드 입력 없이 바로 입장!</span>
+      </div>
+
+      <div style="display: flex; justify-content: center; gap: 10px;">
+        <button class="btn-3d" style="min-width: 180px; padding: 12px 20px;" onclick="copyWatcherInviteLink()">
+          🔗 관전자 초대 링크 복사
+        </button>
       </div>
     </div>
   </div>
 
 
-  <!-- JavaScript Application Logic -->
+  <!-- =======================================================
+       모달 2: 20회 종료! 챌린지 미션 판정 & 최종 성적표 모달
+       ======================================================= -->
+  <div id="finalReportModal" class="modal-backdrop" onclick="if(event.target===this) closeFinalReportModal()">
+    <div class="modal-card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 1.4rem; font-weight: 900;">🏆 20회 실험 완료 성적표</h3>
+        <button class="btn-3d" style="padding: 6px 12px;" onclick="closeFinalReportModal()">✕ 닫기</button>
+      </div>
+
+      <div id="finalSnackTicket" class="report-ticket">
+        <div id="finalTicketBadge" style="font-size: 2.4rem;">🏆🎉</div>
+        <div id="finalTicketTitle" style="font-size: 1.45rem; font-weight: 900; color: var(--ink);">20회 챌린지 미션 성공!!</div>
+        <div id="finalTicketFormula" style="font-size: 1.25rem; font-weight: 900; color: var(--blue-dark);"></div>
+        <div id="finalTicketMeta" style="font-size: 0.82rem; font-weight: 800; color: var(--ink-sub); margin-top: 4px;"></div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div style="background: var(--blue-soft); border: 2px solid #93C5FD; border-radius: 16px; padding: 14px; text-align: center;">
+          <div style="font-size: 0.85rem; font-weight: 900; color: var(--blue-dark);">🔄 바꿨을 때 성공률</div>
+          <div id="finalSwitchSummary" style="font-size: 1.35rem; font-weight: 900; margin-top: 6px;">0 / 0 = 0.0%</div>
+        </div>
+        <div style="background: #F8FAFC; border: 2px solid var(--line-strong); border-radius: 16px; padding: 14px; text-align: center;">
+          <div style="font-size: 0.85rem; font-weight: 900; color: var(--ink-sub);">🔒 유지했을 때 성공률</div>
+          <div id="finalStaySummary" style="font-size: 1.35rem; font-weight: 900; margin-top: 6px;">0 / 0 = 0.0%</div>
+        </div>
+      </div>
+
+      <div id="finalHostActions" style="display: flex; gap: 10px;">
+        <button class="btn-3d btn-blue" style="flex: 1; padding: 14px; font-size: 1.02rem;" onclick="resetSessionData(); closeFinalReportModal();">
+          🔄 새 20회 챌린지 다시 시작하기
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- =======================================================
+       모달 3: 교사용 히든 관리자 설정 (로고 5회 클릭 시에만 노출)
+       ======================================================= -->
+  <div id="teacherAdminModal" class="modal-backdrop" onclick="if(event.target===this) closeTeacherAdminModal()">
+    <div class="modal-card">
+      <h3 style="font-size: 1.3rem; font-weight: 900;">🔐 교사용 실험 설정 (학생 비노출)</h3>
+      <p style="font-size: 0.88rem; color: var(--ink-sub);">
+        상단 로고를 5번 연속 클릭했을 때만 열리는 교사 전용 창입니다.
+      </p>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label style="font-size: 0.85rem; font-weight: 800;">총 제한 시행 횟수 (기본 20회)</label>
+          <input type="number" id="cfgMaxRounds" value="20" min="5" max="100" class="code-input" style="font-size: 1.05rem; letter-spacing: 0;">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label style="font-size: 0.85rem; font-weight: 800;">챌린지 목표 기준 (% 초과)</label>
+          <input type="number" id="cfgSnackCut" value="66.6" step="0.1" min="10" max="95" class="code-input" style="font-size: 1.05rem; letter-spacing: 0;">
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label style="font-size: 0.85rem; font-weight: 800;">선택적 Firebase Realtime DB URL (비워두면 기본 실시간 채널 자동 사용)</label>
+        <input type="text" id="cfgFirebaseUrl" placeholder="https://your-db.firebaseio.com (선택 사항)" class="code-input" style="font-size: 0.9rem; letter-spacing: 0; text-align: left;">
+      </div>
+
+      <div style="background: #F8FAFC; border: 1.5px dashed var(--line-strong); border-radius: 14px; padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+        <span style="font-size: 0.85rem; font-weight: 800; color: var(--ink-sub);">교사용 화면 점검:</span>
+        <button class="btn-3d btn-mint" style="font-size: 0.84rem; padding: 7px 12px;" onclick="openCompanionWatcherPopup()">
+          👀 관전자 화면 새 창으로 열기
+        </button>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px;">
+        <button class="btn-3d" onclick="closeTeacherAdminModal()">취소</button>
+        <button class="btn-3d btn-blue" onclick="saveTeacherAdminConfig()">설정 적용</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- =======================================================
+       핵심 애플리케이션 스크립트
+       ======================================================= -->
   <script>
-    // -------------------------------------------------------------
-    // 1. 순수 Web Audio API 신디사이저 사운드 엔진 (외부 파일 0)
-    // -------------------------------------------------------------
-    class SoundEngine {
+    // =============================================================
+    // 1. 커스텀 고퀄리티 SVG 일러스트 (스포츠카, 염소, 몬티 Take the L / W)
+    // =============================================================
+    function getCarSVG() {
+      return `
+      <svg viewBox="0 0 180 115" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="90" cy="100" rx="70" ry="9" fill="rgba(15,23,42,0.18)"/>
+        <g class="car-body-anim">
+          <!-- 반짝이 별 -->
+          <path d="M24 22 L27 30 L35 33 L27 36 L24 44 L21 36 L13 33 L21 30 Z" fill="#F59E0B"/>
+          <path d="M156 16 L158 22 L164 24 L158 26 L156 32 L154 26 L148 24 L154 22 Z" fill="#FBBF24"/>
+          <!-- 스포일러 -->
+          <path d="M18 58 L8 45 L24 45 L28 58 Z" fill="#DC2626" stroke="#0F172A" stroke-width="3.5" stroke-linejoin="round"/>
+          <!-- 루프 & 유리창 -->
+          <path d="M44 56 L64 30 L118 30 L138 56 Z" fill="#EF4444" stroke="#0F172A" stroke-width="3.5" stroke-linejoin="round"/>
+          <path d="M52 54 L67 35 L92 35 L92 54 Z" fill="#BAE6FD" stroke="#0F172A" stroke-width="3"/>
+          <path d="M97 54 L97 35 L115 35 L131 54 Z" fill="#E0F2FE" stroke="#0F172A" stroke-width="3"/>
+          <!-- 차체 바디 -->
+          <path d="M14 78 L14 60 C14 55 20 53 28 53 L146 53 C158 53 168 61 168 72 L168 82 C168 86 164 88 158 88 L22 88 C17 88 14 84 14 78 Z" fill="#EF4444" stroke="#0F172A" stroke-width="3.8" stroke-linejoin="round"/>
+          <!-- 레이싱 스트라이프 -->
+          <rect x="20" y="67" width="142" height="7" rx="3.5" fill="#FDE047"/>
+          <!-- 헤드라이트 -->
+          <ellipse cx="161" cy="66" rx="6" ry="8" fill="#FEF08A" stroke="#0F172A" stroke-width="3"/>
+          <!-- 바퀴 2개 -->
+          <circle cx="48" cy="88" r="17" fill="#1E293B" stroke="#0F172A" stroke-width="3.8"/>
+          <circle cx="48" cy="88" r="8" fill="#CBD5E1" stroke="#0F172A" stroke-width="2.5"/>
+          <circle cx="132" cy="88" r="17" fill="#1E293B" stroke="#0F172A" stroke-width="3.8"/>
+          <circle cx="132" cy="88" r="8" fill="#CBD5E1" stroke="#0F172A" stroke-width="2.5"/>
+        </g>
+      </svg>`;
+    }
+
+    function getGoatSVG() {
+      return `
+      <svg viewBox="0 0 160 125" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="80" cy="113" rx="50" ry="8" fill="rgba(15,23,42,0.14)"/>
+        <!-- 뿔 -->
+        <path d="M58 36 C46 14 28 16 26 30 C36 28 44 34 48 44 Z" fill="#D97706" stroke="#0F172A" stroke-width="3.5" stroke-linejoin="round"/>
+        <path d="M102 36 C114 14 132 16 134 30 C124 28 116 34 112 44 Z" fill="#D97706" stroke="#0F172A" stroke-width="3.5" stroke-linejoin="round"/>
+        <!-- 귀 -->
+        <ellipse cx="36" cy="54" rx="14" ry="7" transform="rotate(-20 36 54)" fill="#E2E8F0" stroke="#0F172A" stroke-width="3.2"/>
+        <ellipse cx="124" cy="54" rx="14" ry="7" transform="rotate(20 124 54)" fill="#E2E8F0" stroke="#0F172A" stroke-width="3.2"/>
+        <!-- 턱수염 -->
+        <path d="M70 94 L80 114 L90 94 Z" fill="#CBD5E1" stroke="#0F172A" stroke-width="3.2" stroke-linejoin="round"/>
+        <!-- 얼굴 -->
+        <path d="M46 52 C46 32 114 32 114 52 L108 86 C106 98 54 98 52 86 Z" fill="#F8FAFC" stroke="#0F172A" stroke-width="3.6"/>
+        <!-- 킹받는 반감긴 눈 (일자 동공) -->
+        <circle cx="64" cy="58" r="8" fill="#FEF08A" stroke="#0F172A" stroke-width="3"/>
+        <rect x="60" y="57" width="8" height="3.2" rx="1.5" fill="#0F172A"/>
+        <circle cx="96" cy="58" r="8" fill="#FEF08A" stroke="#0F172A" stroke-width="3"/>
+        <rect x="92" y="57" width="8" height="3.2" rx="1.5" fill="#0F172A"/>
+        <!-- 코 & 능청스런 입 -->
+        <ellipse cx="80" cy="77" rx="14" ry="9" fill="#FDA4AF" stroke="#0F172A" stroke-width="3"/>
+        <circle cx="75" cy="76" r="2.2" fill="#0F172A"/>
+        <circle cx="85" cy="76" r="2.2" fill="#0F172A"/>
+        <!-- 물고 씹는 풀잎 -->
+        <g class="goat-grass">
+          <path d="M84 86 Q108 92 122 104" stroke="#16A34A" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M106 95 Q116 86 124 91 Q115 99 106 95 Z" fill="#22C55E" stroke="#0F172A" stroke-width="2"/>
+        </g>
+      </svg>`;
+    }
+
+    function getMysterySVG() {
+      return `
+      <svg viewBox="0 0 120 120" width="82" height="82" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="46" fill="#E2E8F0" stroke="#94A3B8" stroke-width="3" stroke-dasharray="6 6"/>
+        <text x="60" y="76" text-anchor="middle" font-size="52" font-weight="900" fill="#64748B">?</text>
+      </svg>`;
+    }
+
+    // 사회자 몬티 SVG 캐릭터 (normal | win | lose='Take the L' 이마 L 제스처!)
+    function getMontySVG(pose = 'normal') {
+      if (pose === 'lose') {
+        // 요즘 유행하는 'L을 가져가(Take the L)' 모션: 오른손으로 선명한 L자를 만들어 이마 한가운데 딱 대고 흔드는 캐릭터!
+        return `
+        <svg viewBox="0 0 120 120" width="90" height="90" xmlns="http://www.w3.org/2000/svg">
+          <!-- 몸통 정장 -->
+          <path d="M28 112 L34 78 C36 70 84 70 86 78 L92 112 Z" fill="#7C3AED" stroke="#0F172A" stroke-width="3.5"/>
+          <!-- 나비넥타이 -->
+          <polygon points="50,78 60,83 50,88" fill="#F59E0B" stroke="#0F172A" stroke-width="2"/>
+          <polygon points="70,78 60,83 70,88" fill="#F59E0B" stroke="#0F172A" stroke-width="2"/>
+          <!-- 얼굴 -->
+          <circle cx="60" cy="50" r="25" fill="#FDE68A" stroke="#0F172A" stroke-width="3.5"/>
+          <!-- 머리카락 -->
+          <path d="M35 46 C35 24 85 24 85 46 C76 34 46 34 35 46 Z" fill="#1E293B" stroke="#0F172A" stroke-width="3"/>
+          <!-- 얄미운 윙크 & 웃는 눈 -->
+          <path d="M46 50 Q51 45 56 50" stroke="#0F172A" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+          <path d="M65 50 Q70 45 75 50" stroke="#0F172A" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+          <!-- 메롱 입 -->
+          <path d="M50 61 Q60 69 70 61" stroke="#0F172A" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+          <path d="M56 64 Q60 73 64 64 Z" fill="#FB7185" stroke="#0F172A" stroke-width="2"/>
+          <!-- 팔을 올려 이마에 갖다 댄 손 + 선명한 빨간/골드 L 모양! -->
+          <path d="M32 84 C16 68 24 42 46 38" stroke="#7C3AED" stroke-width="10" fill="none" stroke-linecap="round"/>
+          <path d="M32 84 C16 68 24 42 46 38" stroke="#0F172A" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+          <!-- 이마 한가운데 L 마크 -->
+          <g transform="translate(49, 14)">
+            <rect x="0" y="0" width="26" height="28" rx="6" fill="#EF4444" stroke="#0F172A" stroke-width="3"/>
+            <path d="M8 6 L8 21 L19 21" stroke="#FEF08A" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+        </svg>`;
+      }
+
+      if (pose === 'win') {
+        // 당첨 시 선글라스 끼고 양손 W 환호!
+        return `
+        <svg viewBox="0 0 120 120" width="90" height="90" xmlns="http://www.w3.org/2000/svg">
+          <path d="M28 112 L34 78 C36 70 84 70 86 78 L92 112 Z" fill="#2563EB" stroke="#0F172A" stroke-width="3.5"/>
+          <!-- 양손 만세 W -->
+          <path d="M32 82 L16 48" stroke="#2563EB" stroke-width="10" stroke-linecap="round"/>
+          <path d="M88 82 L104 48" stroke="#2563EB" stroke-width="10" stroke-linecap="round"/>
+          <circle cx="15" cy="45" r="7" fill="#FDE68A" stroke="#0F172A" stroke-width="3"/>
+          <circle cx="105" cy="45" r="7" fill="#FDE68A" stroke="#0F172A" stroke-width="3"/>
+          <!-- 얼굴 -->
+          <circle cx="60" cy="50" r="25" fill="#FDE68A" stroke="#0F172A" stroke-width="3.5"/>
+          <path d="M35 44 C35 22 85 22 85 44 C75 33 45 33 35 44 Z" fill="#1E293B" stroke="#0F172A" stroke-width="3"/>
+          <!-- 쿨한 선글라스 -->
+          <rect x="41" y="43" width="16" height="11" rx="3" fill="#0F172A"/>
+          <rect x="63" y="43" width="16" height="11" rx="3" fill="#0F172A"/>
+          <line x1="57" y1="47" x2="63" y2="47" stroke="#0F172A" stroke-width="3"/>
+          <!-- 환호 입 -->
+          <path d="M49 60 Q60 72 71 60 Z" fill="#EF4444" stroke="#0F172A" stroke-width="2.8"/>
+          <!-- W 왕관 배지 -->
+          <rect x="46" y="6" width="28" height="22" rx="6" fill="#F59E0B" stroke="#0F172A" stroke-width="2.8"/>
+          <text x="60" y="22" text-anchor="middle" font-size="15" font-weight="900" fill="#FFFFFF">W!</text>
+        </svg>`;
+      }
+
+      // 기본 쇼호스트 포즈 (마이크 든 몬티)
+      return `
+      <svg viewBox="0 0 120 120" width="90" height="90" xmlns="http://www.w3.org/2000/svg">
+        <path d="M28 112 L34 78 C36 70 84 70 86 78 L92 112 Z" fill="#2563EB" stroke="#0F172A" stroke-width="3.5"/>
+        <polygon points="50,78 60,83 50,88" fill="#EF4444" stroke="#0F172A" stroke-width="2"/>
+        <polygon points="70,78 60,83 70,88" fill="#EF4444" stroke="#0F172A" stroke-width="2"/>
+        <circle cx="60" cy="50" r="25" fill="#FDE68A" stroke="#0F172A" stroke-width="3.5"/>
+        <path d="M35 45 C35 22 85 22 85 45 C75 33 45 33 35 45 Z" fill="#1E293B" stroke="#0F172A" stroke-width="3"/>
+        <circle cx="51" cy="50" r="3.4" fill="#0F172A"/>
+        <circle cx="69" cy="50" r="3.4" fill="#0F172A"/>
+        <path d="M50 61 Q60 68 70 61" stroke="#0F172A" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        <!-- 황금 마이크 -->
+        <rect x="86" y="72" width="8" height="22" rx="4" transform="rotate(-18 90 83)" fill="#334155" stroke="#0F172A" stroke-width="2.5"/>
+        <circle cx="86" cy="68" r="8" fill="#F59E0B" stroke="#0F172A" stroke-width="2.8"/>
+      </svg>`;
+    }
+
+
+    // =============================================================
+    // 2. 순수 Web Audio API 효과음 신디사이저 (외부 mp3 파일 불필요)
+    // =============================================================
+    class ShowAudio {
       constructor() {
         this.ctx = null;
-        this.enabled = true;
+        this.on = true;
       }
-      init() {
-        if (!this.ctx && this.enabled) {
-          const AudioContext = window.AudioContext || window.webkitAudioContext;
-          if (AudioContext) this.ctx = new AudioContext();
+      ensure() {
+        if (!this.on) return false;
+        if (!this.ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) this.ctx = new AC();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+        return !!this.ctx;
+      }
+      pop(freq = 680) {
+        if (!this.ensure()) return;
+        const t = this.ctx.currentTime;
+        const o = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(freq, t);
+        o.frequency.exponentialRampToValueAtTime(240, t + 0.07);
+        g.gain.setValueAtTime(0.22, t);
+        g.gain.linearRampToValueAtTime(0.01, t + 0.07);
+        o.connect(g); g.connect(this.ctx.destination);
+        o.start(t); o.stop(t + 0.07);
+      }
+      doorCreak() {
+        if (!this.ensure()) return;
+        const t = this.ctx.currentTime;
+        const o = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(120, t);
+        o.frequency.linearRampToValueAtTime(220, t + 0.25);
+        g.gain.setValueAtTime(0.2, t);
+        g.gain.linearRampToValueAtTime(0.01, t + 0.26);
+        o.connect(g); g.connect(this.ctx.destination);
+        o.start(t); o.stop(t + 0.26);
+      }
+      fanfare() {
+        if (!this.ensure()) return;
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        notes.forEach((f, idx) => {
+          const t = this.ctx.currentTime + idx * 0.09;
+          const o = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          o.type = 'triangle';
+          o.frequency.setValueAtTime(f, t);
+          g.gain.setValueAtTime(0.26, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+          o.connect(g); g.connect(this.ctx.destination);
+          o.start(t); o.stop(t + 0.36);
+        });
+      }
+      goatLose() {
+        if (!this.ensure()) return;
+        const t = this.ctx.currentTime;
+        const c = this.ctx.createOscillator();
+        const m = this.ctx.createOscillator();
+        const mg = this.ctx.createGain();
+        const g = this.ctx.createGain();
+        c.type = 'sawtooth';
+        c.frequency.setValueAtTime(275, t);
+        c.frequency.linearRampToValueAtTime(185, t + 0.45);
+        m.type = 'sine';
+        m.frequency.setValueAtTime(15, t);
+        mg.gain.setValueAtTime(32, t);
+        g.gain.setValueAtTime(0.18, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+        m.connect(mg); mg.connect(c.frequency);
+        c.connect(g); g.connect(this.ctx.destination);
+        m.start(t); c.start(t);
+        m.stop(t + 0.45); c.stop(t + 0.45);
+      }
+    }
+    const sfx = new ShowAudio();
+
+    function toggleAudio() {
+      sfx.on = !sfx.on;
+      document.getElementById('audioToggleIcon').textContent = sfx.on ? '🔊' : '🔇';
+    }
+
+
+    // =============================================================
+    // 3. 폭죽 파티클 엔진 (Confetti)
+    // =============================================================
+    const confCanvas = document.getElementById('confettiCanvas');
+    const confCtx = confCanvas.getContext('2d');
+    let particles = [];
+
+    function fitConfetti() {
+      confCanvas.width = window.innerWidth;
+      confCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', fitConfetti);
+    fitConfetti();
+
+    function burstConfetti(count = 80) {
+      const palette = ['#2563EB', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6', '#EC4899'];
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: window.innerWidth * 0.5,
+          y: window.innerHeight * 0.42,
+          vx: (Math.random() - 0.5) * 20,
+          vy: (Math.random() - 0.85) * 20,
+          w: Math.random() * 9 + 5,
+          h: Math.random() * 6 + 4,
+          color: palette[Math.floor(Math.random() * palette.length)],
+          rot: Math.random() * 360,
+          vr: (Math.random() - 0.5) * 14,
+          life: 95
+        });
+      }
+    }
+    (function loopConfetti() {
+      confCtx.clearRect(0, 0, confCanvas.width, confCanvas.height);
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx; p.y += p.vy; p.vy += 0.46; p.rot += p.vr; p.life--;
+        confCtx.save();
+        confCtx.translate(p.x, p.y);
+        confCtx.rotate((p.rot * Math.PI) / 180);
+        confCtx.fillStyle = p.color;
+        confCtx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        confCtx.restore();
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+      requestAnimationFrame(loopConfetti);
+    })();
+
+
+    // =============================================================
+    // 4. 다중 채널 실시간 동기화 엔진 (BroadcastChannel + MQTT 이중화 + PeerJS 443 + 선택적 Firebase)
+    // =============================================================
+    class RealtimeRoomSync {
+      constructor() {
+        this.roomCode = null;
+        this.role = null; // 'HOST' | 'WATCHER'
+        this.bc = null;
+        this.mqttClients = [];
+        this.peer = null;
+        this.peerConns = new Map();
+        this.fbRef = null;
+        this.lastSeq = 0;
+        this.watchers = new Map(); // watcherId -> timestamp
+        this.watcherId = 'w_' + Math.random().toString(36).slice(2, 9);
+        this.presenceTimer = null;
+      }
+
+      cleanup() {
+        if (this.bc) { try { this.bc.close(); } catch(e){} this.bc = null; }
+        this.mqttClients.forEach(c => { try { c.end(true); } catch(e){} });
+        this.mqttClients = [];
+        this.peerConns.forEach(conn => { try { conn.close(); } catch(e){} });
+        this.peerConns.clear();
+        if (this.peer) { try { this.peer.destroy(); } catch(e){} this.peer = null; }
+        if (this.fbRef) { try { this.fbRef.off(); } catch(e){} this.fbRef = null; }
+        if (this.presenceTimer) { clearInterval(this.presenceTimer); this.presenceTimer = null; }
+        this.watchers.clear();
+        this.latestPayload = null;
+        this.lastSeq = 0;
+        this.broadcastSeq = 0;
+      }
+
+      start(roomCode, role, onStateReceived, onWatcherCountChanged) {
+        this.cleanup();
+        this.roomCode = String(roomCode);
+        this.role = role;
+        this.onState = onStateReceived;
+        this.onWatcherCount = onWatcherCountChanged;
+
+        const stateTopic = `snu-math-monty-v3/room/${this.roomCode}/state`;
+        const presenceTopic = `snu-math-monty-v3/room/${this.roomCode}/presence`;
+
+        // 1) 동일 PC/브라우저 탭 간 0ms 동기화 (BroadcastChannel)
+        if ('BroadcastChannel' in window) {
+          try {
+            this.bc = new BroadcastChannel(`monty_sync_${this.roomCode}`);
+            this.bc.onmessage = (ev) => {
+              const msg = ev.data;
+              if (!msg) return;
+              if (msg.type === 'STATE' && this.role === 'WATCHER') {
+                this.acceptState(msg.payload);
+              } else if (msg.type === 'HELLO' && this.role === 'HOST') {
+                this.recordWatcher(msg.watcherId);
+                if (this.latestPayload) this.bc.postMessage({ type: 'STATE', payload: this.latestPayload });
+              }
+            };
+            if (this.role === 'WATCHER') {
+              this.bc.postMessage({ type: 'HELLO', watcherId: this.watcherId });
+            }
+          } catch (e) {
+            this.bc = null;
+          }
+        }
+
+        // 2) MQTT over WSS 이중 브로커 연결 (Retained 메시지로 늦게 들어온 학생도 0.1초 만에 복원!)
+        if (typeof mqtt !== 'undefined') {
+          const brokers = [
+            'wss://broker.emqx.io:8084/mqtt',
+            'wss://broker.hivemq.com:8884/mqtt'
+          ];
+          brokers.forEach((url) => {
+            try {
+              const client = mqtt.connect(url, {
+                connectTimeout: 5000,
+                reconnectPeriod: 3000,
+                clientId: `monty_${this.role}_${Math.random().toString(16).slice(2, 10)}`
+              });
+              client.on('connect', () => {
+                updateHeaderRoomBadge();
+                if (this.role === 'WATCHER') {
+                  client.subscribe(stateTopic, { qos: 1 });
+                  client.publish(presenceTopic, JSON.stringify({ id: this.watcherId, ts: Date.now() }));
+                } else {
+                  client.subscribe(presenceTopic, { qos: 0 });
+                  if (this.latestPayload) {
+                    client.publish(stateTopic, JSON.stringify(this.latestPayload), { qos: 1, retain: true });
+                  }
+                }
+              });
+              client.on('message', (topic, buf) => {
+                try {
+                  const data = JSON.parse(buf.toString());
+                  if (topic === stateTopic && this.role === 'WATCHER') {
+                    this.acceptState(data);
+                  } else if (topic === presenceTopic && this.role === 'HOST' && data.id) {
+                    this.recordWatcher(data.id);
+                  }
+                } catch (e) {}
+              });
+              this.mqttClients.push(client);
+            } catch (e) {}
+          });
+        }
+
+        // 3) PeerJS (포트 443 HTTPS/WSS 시그널링 + WebRTC DataChannel 폴백)
+        if (typeof Peer !== 'undefined') {
+          try {
+            const hostPeerId = `snu-monty-v3-room-${this.roomCode}`;
+            if (this.role === 'HOST') {
+              this.peer = new Peer(hostPeerId);
+              this.peer.on('connection', (conn) => {
+                this.peerConns.set(conn.peer, conn);
+                this.recordWatcher(conn.peer);
+                conn.on('open', () => {
+                  if (this.latestPayload) conn.send({ type: 'STATE', payload: this.latestPayload });
+                });
+                conn.on('close', () => {
+                  this.peerConns.delete(conn.peer);
+                });
+              });
+            } else {
+              this.peer = new Peer();
+              this.peer.on('open', () => {
+                const conn = this.peer.connect(hostPeerId, { reliable: true });
+                conn.on('open', () => { updateHeaderRoomBadge(); });
+                conn.on('data', (msg) => {
+                  if (msg && msg.type === 'STATE') this.acceptState(msg.payload);
+                });
+              });
+            }
+          } catch (e) {}
+        }
+
+        // 4) 선택적 Firebase Realtime Database (교사가 설정한 경우 병행 작동)
+        if (appConfig.firebaseUrl && typeof firebase !== 'undefined') {
+          try {
+            if (!firebase.apps.length) {
+              firebase.initializeApp({ databaseURL: appConfig.firebaseUrl });
+            }
+            this.fbRef = firebase.database().ref(`monty_rooms/${this.roomCode}`);
+            if (this.role === 'WATCHER') {
+              this.fbRef.on('value', (snap) => {
+                const v = snap.val();
+                if (v) this.acceptState(v);
+              });
+            }
+          } catch (e) {}
+        }
+
+        // 관전자 하트비트 발송 & 호스트 관전자 수 카운트 정리
+        this.presenceTimer = setInterval(() => {
+          if (this.role === 'WATCHER') {
+            if (this.bc) this.bc.postMessage({ type: 'HELLO', watcherId: this.watcherId });
+            const pTopic = `snu-math-monty-v3/room/${this.roomCode}/presence`;
+            this.mqttClients.forEach(c => {
+              if (c.connected) c.publish(pTopic, JSON.stringify({ id: this.watcherId, ts: Date.now() }));
+            });
+          } else if (this.role === 'HOST') {
+            const now = Date.now();
+            let changed = false;
+            this.watchers.forEach((ts, k) => {
+              if (now - ts > 18000 && !this.peerConns.has(k)) {
+                this.watchers.delete(k);
+                changed = true;
+              }
+            });
+            if (changed && this.onWatcherCount) this.onWatcherCount(this.watchers.size);
+          }
+        }, 5000);
+      }
+
+      recordWatcher(id) {
+        this.watchers.set(id, Date.now());
+        if (this.onWatcherCount) this.onWatcherCount(this.watchers.size);
+      }
+
+      acceptState(payload) {
+        if (!payload || typeof payload.seq !== 'number') return;
+        if (payload.seq <= this.lastSeq) return;
+        this.lastSeq = payload.seq;
+        if (this.onState) this.onState(payload);
+      }
+
+      broadcast(stateObj) {
+        if (this.role !== 'HOST') return;
+        this.broadcastSeq = (this.broadcastSeq || 0) + 1;
+        const payload = { ...stateObj, seq: this.broadcastSeq };
+        this.latestPayload = payload;
+
+        if (this.bc) {
+          try { this.bc.postMessage({ type: 'STATE', payload }); } catch(e){}
+        }
+        const stateTopic = `snu-math-monty-v3/room/${this.roomCode}/state`;
+        const json = JSON.stringify(payload);
+        this.mqttClients.forEach(c => {
+          if (c.connected) {
+            try { c.publish(stateTopic, json, { qos: 1, retain: true }); } catch(e){}
+          }
+        });
+        this.peerConns.forEach(conn => {
+          if (conn.open) {
+            try { conn.send({ type: 'STATE', payload }); } catch(e){}
+          }
+        });
+        if (this.fbRef) {
+          try { this.fbRef.set(payload); } catch(e){}
         }
       }
-      // 문 클릭 (딸깍)
-      playClick() {
-        if (!this.enabled) return;
-        this.init();
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.frequency.setValueAtTime(800, this.ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.05);
-        gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.05);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start();
-        osc.stop(this.ctx.currentTime + 0.05);
-      }
-      // 고속 룰렛 틱 소리
-      playTick() {
-        if (!this.enabled) return;
-        this.init();
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.frequency.setValueAtTime(1200, this.ctx.currentTime);
-        gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.025);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start();
-        osc.stop(this.ctx.currentTime + 0.025);
-      }
-      // 서스펜스 럼블
-      playSuspense() {
-        if (!this.enabled) return;
-        this.init();
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(90, this.ctx.currentTime);
-        osc.frequency.linearRampToValueAtTime(160, this.ctx.currentTime + 0.4);
-        gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.4);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start();
-        osc.stop(this.ctx.currentTime + 0.4);
-      }
-      // 승리 빵파레
-      playWinFanfare() {
-        if (!this.enabled) return;
-        this.init();
-        if (!this.ctx) return;
-        const notes = [523.25, 659.25, 783.99, 1046.50];
-        notes.forEach((freq, i) => {
-          const osc = this.ctx.createOscillator();
-          const gain = this.ctx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, this.ctx.currentTime + i * 0.09);
-          gain.gain.setValueAtTime(0.25, this.ctx.currentTime + i * 0.09);
-          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i * 0.09 + 0.35);
-          osc.connect(gain);
-          gain.connect(this.ctx.destination);
-          osc.start(this.ctx.currentTime + i * 0.09);
-          osc.stop(this.ctx.currentTime + i * 0.09 + 0.35);
-        });
-      }
-      // 염소 울음소리 (FM 변조 메에에~)
-      playGoatBleat() {
-        if (!this.enabled) return;
-        this.init();
-        if (!this.ctx) return;
-        const carrier = this.ctx.createOscillator();
-        const modulator = this.ctx.createOscillator();
-        const modGain = this.ctx.createGain();
-        const mainGain = this.ctx.createGain();
-
-        carrier.type = 'sawtooth';
-        carrier.frequency.setValueAtTime(260, this.ctx.currentTime);
-        carrier.frequency.linearRampToValueAtTime(200, this.ctx.currentTime + 0.4);
-
-        modulator.type = 'sine';
-        modulator.frequency.setValueAtTime(14, this.ctx.currentTime);
-        modGain.gain.setValueAtTime(35, this.ctx.currentTime);
-
-        mainGain.gain.setValueAtTime(0.2, this.ctx.currentTime);
-        mainGain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
-
-        modulator.connect(carrier.frequency);
-        carrier.connect(mainGain);
-        mainGain.connect(this.ctx.destination);
-
-        modulator.start();
-        carrier.start();
-        modulator.stop(this.ctx.currentTime + 0.4);
-        carrier.stop(this.ctx.currentTime + 0.4);
-      }
-    }
-    const sound = new SoundEngine();
-
-    function toggleSound() {
-      sound.enabled = !sound.enabled;
-      document.getElementById('soundIcon').textContent = sound.enabled ? '🔊' : '🔇';
     }
 
-
-    // -------------------------------------------------------------
-    // 2. 순수 Canvas 폭죽 (Confetti Engine)
-    // -------------------------------------------------------------
-    const confettiCanvas = document.getElementById('confettiCanvas');
-    const confettiCtx = confettiCanvas.getContext('2d');
-    let confettiParticles = [];
-
-    function resizeConfetti() {
-      confettiCanvas.width = window.innerWidth;
-      confettiCanvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resizeConfetti);
-    resizeConfetti();
-
-    function launchConfetti() {
-      for (let i = 0; i < 75; i++) {
-        confettiParticles.push({
-          x: window.innerWidth / 2,
-          y: window.innerHeight / 2,
-          vx: (Math.random() - 0.5) * 18,
-          vy: (Math.random() - 0.8) * 20,
-          size: Math.random() * 8 + 4,
-          color: ['#f59e0b', '#6366f1', '#10b981', '#ec4899', '#38bdf8'][Math.floor(Math.random() * 5)],
-          rot: Math.random() * 360,
-          rotSpeed: (Math.random() - 0.5) * 10,
-          life: 90
-        });
-      }
-    }
-
-    function renderConfetti() {
-      confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
-      confettiParticles.forEach((p, idx) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.45;
-        p.rot += p.rotSpeed;
-        p.life--;
-
-        confettiCtx.save();
-        confettiCtx.translate(p.x, p.y);
-        confettiCtx.rotate((p.rot * Math.PI) / 180);
-        confettiCtx.fillStyle = p.color;
-        confettiCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
-        confettiCtx.restore();
-
-        if (p.life <= 0) confettiParticles.splice(idx, 1);
-      });
-      requestAnimationFrame(renderConfetti);
-    }
-    renderConfetti();
+    const syncEngine = new RealtimeRoomSync();
 
 
-    // -------------------------------------------------------------
-    // 3. 게임 상태 변수 (Game State)
-    // -------------------------------------------------------------
-    const GameState = { IDLE: 'IDLE', HOST_REVEALED: 'HOST_REVEALED', FINAL_RESULT: 'FINAL_RESULT', FAST_RUNNING: 'FAST_RUNNING' };
-    let currentState = GameState.IDLE;
-    let round = 1;
-    let maxRound = 20;
-
-    let carDoor = 1;
-    let firstPick = null;
-    let hostDoor = null;
-    let finalPick = null;
-    let isSwitched = false;
-    let isWin = false;
-
-    // 통계 누적 객체
-    const stats = {
-      switchWins: 0,
-      switchTotal: 0,
-      stayWins: 0,
-      stayTotal: 0,
-      history: []
+    // =============================================================
+    // 5. 앱 전역 설정 및 게임 상태 (State)
+    // =============================================================
+    const appConfig = {
+      maxRounds: 20,
+      snackCutPct: 66.6, // 66.6% 초과 시 챌린지 성공! (20회 기준 14승 = 70.0%)
+      firebaseUrl: ''
     };
 
-    // -------------------------------------------------------------
-    // 4. 게임 라이프사이클 (Game Logic)
-    // -------------------------------------------------------------
-    function initRound() {
-      if (currentState === GameState.FAST_RUNNING) return;
+    // 모드: 'HOME' | 'STAGE_HOST' | 'WATCHER' | 'SOLO_LAB'
+    let appMode = 'HOME';
+    let watcherCount = 0;
+    let watcherSynced = false;
+    let watcherReportTimer = null;
 
-      currentState = GameState.IDLE;
-      firstPick = null;
-      hostDoor = null;
-      finalPick = null;
-      isSwitched = false;
-      isWin = false;
+    const Phase = {
+      PICK_FIRST: 'PICK_FIRST',       // 1단계: 문 3개 중 하나 선택 대기
+      SUSPENSE: 'SUSPENSE',           // 1.2단계: 문 흔들림 서스펜스
+      HOST_OPENED: 'HOST_OPENED',     // 2단계: 사회자가 염소 문 개방 -> 바꾸기/유지 결정 대기
+      REVEALED: 'REVEALED'            // 3단계: 최종 문 개방 및 당첨/꽝 확정
+    };
 
-      // 무대 조명 초기화
-      document.body.className = '';
-      document.getElementById('mainStageCard').className = 'stage-card';
+    const session = {
+      round: 1,
+      phase: Phase.PICK_FIRST,
+      carDoor: 1,
+      firstPick: null,
+      hostDoor: null,
+      finalPick: null,
+      isSwitched: null,
+      isWin: null,
+      streak: 0,
+      trials: [] // [{ round, carDoor, firstPick, hostDoor, finalPick, isSwitched, isWin }]
+    };
 
-      resetHostAvatar();
-      updateHostDialogue("자, 행운의 여신은 몇 번 문 뒤에 있을까? 문을 하나 골라봐!");
+    // 다채로운 사회자 몬티 대사 풀
+    const MONTY_LINES = {
+      start: [
+        "자, 세 개의 문 중 단 한 곳에만 슈퍼카가 숨어 있습니다! 느낌 오는 문을 터치해 보세요!",
+        "운명의 선택 시간! 1번, 2번, 3번 중 자동차 열쇠가 들어있는 문은 어디일까요?",
+        "자리의 친구들은 이미 정답을 다 보고 있습니다! 과연 도전자의 직감은 통할까요?",
+        "심호흡 한번 하시고~ 마음이 이끄는 문을 과감하게 골라보세요!"
+      ],
+      goatOpen: [
+        (h, rem) => `짜잔~! ${h}번 문 뒤에는 풀 뜯는 염소가 있었네요! 자, 원래 고른 문을 지킬까요, ${rem}번 문으로 바꿀까요?`,
+        (h, rem) => `크크큭! ${h}번 문 염소는 제가 먼저 치워드렸습니다! 지금 ${rem}번 문으로 갈아타시겠습니까?`,
+        (h, rem) => `${h}번 문은 꽝(염소) 확정! 이제 남은 문은 딱 2개! 바꿀 것인가, 뚝심으로 밀고 갈 것인가?!`,
+        (h, rem) => `사회자 찬스로 ${h}번 염소 공개! 교실 공기가 심상치 않은데요~ ${rem}번 문으로 바꾸시겠어요?`
+      ],
+      winSwitch: [
+        "대애애박!! 바꿔서 슈퍼카 당첨!! 역시 바꾼 선택이 신의 한 수였습니다! W 챙겨가세요!",
+        "부릉부릉~!! 과감하게 문을 바꿔서 새 자동차를 뽑았습니다! 빅토리 W!!",
+        "정답입니다!! 처음엔 염소였는데 바꿔서 자동차로 대역전 성공!!"
+      ],
+      winStay: [
+        "와우!! 흔들리지 않는 강철 뚝심! 처음 고른 문에 진짜 슈퍼카가 있었네요! 빅토리 W!!",
+        "33.3%의 바늘구멍을 뚫고 그대로 유지해서 자동차 획득!! 대단한 직감입니다!"
+      ],
+      loseSwitch: [
+        "메에에에~ 아뿔싸! 처음 고른 문이 진짜 차였는데 바꿔서 염소 당첨! 패배의 L을 가져가~!",
+        "으아악 염소 등장!! 아깝게 차를 두고 옆문 염소로 이사 오셨네요~ L 적립입니다!"
+      ],
+      loseStay: [
+        "메에에에~ 꽝!! 바꿨으면 슈퍼카였는데 끝까지 고집부리다 염소 당첨! 패배의 L을 가져가~!",
+        "오늘부터 염소 농장 주인 당첨입니다~! 옆 문에 차가 있었는데 안 바꿨네요! TAKE THE L!"
+      ]
+    };
 
-      carDoor = Math.floor(Math.random() * 3) + 1;
+    function pickLine(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
 
-      for (let i = 1; i <= 3; i++) {
-        const slot = document.getElementById(`slot${i}`);
-        slot.className = 'door-slot';
-        document.getElementById(`tag${i}`).className = 'door-indicator';
-        document.getElementById(`tag${i}`).textContent = `${i}번 문`;
 
-        document.getElementById(`prize${i}`).textContent = (i === carDoor) ? '🚗' : '🐐';
-        document.getElementById(`title${i}`).textContent = (i === carDoor) ? '자동차' : '염소';
+    // =============================================================
+    // 6. 수학 분수(M/N) 및 근삿값 등호(= / ≈) 정밀 포맷터
+    // =============================================================
+    function calcMathFraction(wins, total) {
+      if (total === 0) {
+        return { num: 0, den: 0, sym: '=', pctText: '0.0%', pctNum: 0 };
       }
-
-      document.getElementById('decisionDeck').style.display = 'none';
-      document.getElementById('nextRoundDeck').style.display = 'none';
-      document.getElementById('roundCounter').textContent = `시행: ${round} / ${maxRound}회`;
-    }
-
-    function onDoorSelected(num) {
-      if (currentState !== GameState.IDLE) return;
-      sound.playClick();
-
-      firstPick = num;
-      const slot = document.getElementById(`slot${num}`);
-      slot.classList.add('chosen', 'suspense-shake');
-      document.getElementById(`tag${num}`).classList.add('active-choice');
-      document.getElementById(`tag${num}`).textContent = '내 선택!';
-
-      sound.playSuspense();
-      updateHostDialogue(`오호, ${num}번 문을 골랐구나! 과연 그 뒤엔 무엇이...?`);
-
-      // 0.4초 서스펜스 후 사회자가 염소 문 개방
-      setTimeout(() => {
-        slot.classList.remove('suspense-shake');
-        openHostGoatDoor();
-      }, 400);
-    }
-
-    function openHostGoatDoor() {
-      currentState = GameState.HOST_REVEALED;
-
-      const candidates = [1, 2, 3].filter(d => d !== firstPick && d !== carDoor);
-      hostDoor = candidates[Math.floor(Math.random() * candidates.length)];
-
-      document.getElementById(`slot${hostDoor}`).classList.add('open');
-      document.getElementById(`tag${hostDoor}`).classList.add('host-goat');
-      document.getElementById(`tag${hostDoor}`).textContent = '사회자 공개 (염소 🐐)';
-
-      sound.playGoatBleat();
-
-      const remaining = [1, 2, 3].find(d => d !== firstPick && d !== hostDoor);
-      updateHostDialogue(`크크큭! ${hostDoor}번 문은 염소였습니다! 🐐 자... ${remaining}번 문으로 바꿀래? 안 바꿀래? 😏`);
-
-      document.getElementById('decisionDeck').style.display = 'flex';
-    }
-
-    function finalizeChoice(switched) {
-      if (currentState !== GameState.HOST_REVEALED) return;
-      sound.playClick();
-
-      currentState = GameState.FINAL_RESULT;
-      isSwitched = switched;
-
-      const remaining = [1, 2, 3].find(d => d !== firstPick && d !== hostDoor);
-      finalPick = isSwitched ? remaining : firstPick;
-
-      // 최종 선택 문 표시
-      for (let i = 1; i <= 3; i++) document.getElementById(`slot${i}`).classList.remove('chosen');
-      document.getElementById(`slot${finalPick}`).classList.add('chosen');
-
-      // 모든 문 개방
-      for (let i = 1; i <= 3; i++) document.getElementById(`slot${i}`).classList.add('open');
-
-      isWin = (finalPick === carDoor);
-
-      // 통계 반영
-      if (isSwitched) {
-        stats.switchTotal++;
-        if (isWin) stats.switchWins++;
-      } else {
-        stats.stayTotal++;
-        if (isWin) stats.stayWins++;
-      }
-
-      // 수렴 그래프용 기록
-      const sRatio = stats.switchTotal ? (stats.switchWins / stats.switchTotal) : 0;
-      const stayRatio = stats.stayTotal ? (stats.stayWins / stats.stayTotal) : 0;
-      stats.history.push({ switchRatio: sRatio, stayRatio: stayRatio });
-
-      updateMathUI();
-      drawConvergenceGraph();
-
-      // 결과 리액션 (Take the L vs Win W) & 무대 조명 효과
-      if (isWin) {
-        document.body.className = 'stage-win';
-        document.getElementById('mainStageCard').classList.add('flash-win');
-        sound.playWinFanfare();
-        launchConfetti();
-        document.body.classList.add('screen-shake');
-        setTimeout(() => document.body.classList.remove('screen-shake'), 400);
-
-        setHostVictoryW();
-        updateHostDialogue(isSwitched
-          ? `대박!! 🚗💨 바꿔서 자동차 당첨! 역시 확률의 승리다! 빅토리 W를 챙겨가라!`
-          : `헉!! 🚗 33.3%의 기적을 뚫고 자동차 당첨! 뚝심 인정이다!`);
-      } else {
-        document.body.className = 'stage-lose';
-        sound.playGoatBleat();
-        setHostTakeTheL();
-        updateHostDialogue(`메에에~ 🐐 꽝! 넌 패배의 L이나 가져가라! 🤦‍♂️ L 획득!`);
-      }
-
-      document.getElementById('decisionDeck').style.display = 'none';
-      document.getElementById('nextRoundDeck').style.display = 'flex';
-    }
-
-    function nextRound() {
-      round++;
-      if (round > maxRound) maxRound += 20;
-      initRound();
-    }
-
-
-    // -------------------------------------------------------------
-    // 5. 초고속 전략 실험: 무대 슬롯머신 룰렛 애니메이션 연동!
-    // -------------------------------------------------------------
-    let fastSimInterval = null;
-
-    function runAnimatedFastSimulation(strategy, count) {
-      if (currentState === GameState.FAST_RUNNING) return;
-      currentState = GameState.FAST_RUNNING;
-
-      // UI 버튼 비활성화 및 표시
-      setFastRunControls(true);
-      document.body.className = 'stage-fast-run';
-      document.getElementById('mainStageCard').className = 'stage-card flash-fast';
-      document.getElementById('fastRunIndicator').style.display = 'inline';
-      updateHostDialogue(`⚡ 초고속 룰렛 실험 시작! 무대 위에서 ${count}번의 대결이 폭풍처럼 펼쳐집니다!`);
-
-      let currentStep = 0;
-      const stepInterval = Math.max(45, Math.floor(1400 / count)); // 약 1.2~1.5초 동안 진행
-
-      fastSimInterval = setInterval(() => {
-        currentStep++;
-
-        // 1. 단일 판 시뮬레이션 계산
-        const car = Math.floor(Math.random() * 3) + 1;
-        const pick = Math.floor(Math.random() * 3) + 1;
-        const hostOptions = [1, 2, 3].filter(d => d !== pick && d !== car);
-        const host = hostOptions[Math.floor(Math.random() * hostOptions.length)];
-        const remaining = [1, 2, 3].find(d => d !== pick && d !== host);
-
-        let doSwitch = (strategy === 'SWITCH');
-        if (strategy === 'HYBRID') doSwitch = Math.random() < 0.5;
-
-        const finalP = doSwitch ? remaining : pick;
-        const win = (finalP === car);
-
-        if (doSwitch) {
-          stats.switchTotal++;
-          if (win) stats.switchWins++;
-        } else {
-          stats.stayTotal++;
-          if (win) stats.stayWins++;
-        }
-
-        const sRatio = stats.switchTotal ? (stats.switchWins / stats.switchTotal) : 0;
-        const stayRatio = stats.stayTotal ? (stats.stayWins / stats.stayTotal) : 0;
-        stats.history.push({ switchRatio: sRatio, stayRatio: stayRatio });
-
-        // 2. 무대 위의 문들을 실제로 고속 회전/개방하는 시각적 연출!
-        for (let i = 1; i <= 3; i++) {
-          const slot = document.getElementById(`slot${i}`);
-          slot.className = 'door-slot open';
-          document.getElementById(`prize${i}`).textContent = (i === car) ? '🚗' : '🐐';
-          document.getElementById(`title${i}`).textContent = (i === car) ? '자동차' : '염소';
-          document.getElementById(`tag${i}`).className = 'door-indicator';
-        }
-        document.getElementById(`slot${finalP}`).classList.add('chosen');
-        document.getElementById(`tag${finalP}`).classList.add('active-choice');
-        document.getElementById(`tag${finalP}`).textContent = win ? '당첨! 🚗' : '꽝 🐐';
-
-        // 사운드 틱 재생
-        sound.playTick();
-
-        // 실시간 분수 및 수렴 그래프 업데이트
-        round++;
-        maxRound = Math.max(maxRound, round);
-        document.getElementById('roundCounter').textContent = `시행: ${round} / ${maxRound}회`;
-        updateMathUI();
-        drawConvergenceGraph();
-
-        // 완료 시점 처리
-        if (currentStep >= count) {
-          clearInterval(fastSimInterval);
-          finishFastSimulation(win, doSwitch, count);
-        }
-      }, stepInterval);
-    }
-
-    function finishFastSimulation(lastWin, lastSwitched, count) {
-      currentState = GameState.IDLE;
-      setFastRunControls(false);
-      document.getElementById('fastRunIndicator').style.display = 'none';
-
-      sound.playWinFanfare();
-      launchConfetti();
-      document.body.className = 'stage-win';
-      document.getElementById('mainStageCard').className = 'stage-card flash-win';
-
-      const sData = formatMathProb(stats.switchWins, stats.switchTotal);
-      const stayData = formatMathProb(stats.stayWins, stats.stayTotal);
-
-      if (stats.switchTotal > 0 && stats.stayTotal > 0) {
-        const mult = (sData.rawRatio / stayData.rawRatio).toFixed(1);
-        updateHostDialogue(`🎉 ${count}회 완료! 바꾸기(${sData.percent}%)가 유지하기(${stayData.percent}%)보다 약 ${mult}배 높습니다!`);
-      } else {
-        updateHostDialogue(`🎉 ${count}회 초고속 시뮬레이션 완료! 누적된 그래프와 분수를 확인해 보세요!`);
-      }
-
-      document.getElementById('nextRoundDeck').style.display = 'flex';
-    }
-
-    function setFastRunControls(disabled) {
-      document.getElementById('btnAutoSwitch').disabled = disabled;
-      document.getElementById('btnAutoStay').disabled = disabled;
-      document.getElementById('btnAuto100').disabled = disabled;
-    }
-
-
-    // -------------------------------------------------------------
-    // 6. 데이터 초기화 (요청 반영)
-    // -------------------------------------------------------------
-    function resetAllStats() {
-      sound.playClick();
-      stats.switchWins = 0;
-      stats.switchTotal = 0;
-      stats.stayWins = 0;
-      stats.stayTotal = 0;
-      stats.history = [];
-      round = 1;
-      maxRound = 20;
-
-      updateMathUI();
-      drawConvergenceGraph();
-      initRound();
-      updateHostDialogue("🔄 통계와 무대가 깨끗하게 0회로 초기화되었습니다. 새로운 실험을 시작해보세요!");
-    }
-
-
-    // -------------------------------------------------------------
-    // 7. 수학적 분수(M/N) 및 근삿값(≈) 표기 로직
-    // -------------------------------------------------------------
-    function updateMathUI() {
-      const sTot = stats.switchTotal;
-      const sWin = stats.switchWins;
-      const stayTot = stats.stayTotal;
-      const stayWin = stats.stayWins;
-
-      const sData = formatMathProb(sWin, sTot);
-      const stayData = formatMathProb(stayWin, stayTot);
-
-      document.getElementById('totalTrialsCount').textContent = `총 ${sTot + stayTot}회`;
-
-      // 바꿨을 때
-      document.getElementById('switchNum').textContent = sData.num;
-      document.getElementById('switchDenom').textContent = sData.denom;
-      document.getElementById('switchSym').textContent = sData.sym;
-      document.getElementById('switchPercent').textContent = `${sData.percent}%`;
-
-      // 유지했을 때
-      document.getElementById('stayNum').textContent = stayData.num;
-      document.getElementById('stayDenom').textContent = stayData.denom;
-      document.getElementById('staySym').textContent = stayData.sym;
-      document.getElementById('stayPercent').textContent = `${stayData.percent}%`;
-
-      // 배수 인디케이터 배지 (예: 바꾸면 2.1배 유리!)
-      const badge = document.getElementById('ratioMultiplierBadge');
-      if (stayData.rawRatio > 0 && sData.rawRatio > 0) {
-        const multiple = (sData.rawRatio / stayData.rawRatio).toFixed(1);
-        badge.innerHTML = `🔥 <strong>[실험 결과]</strong> 바꾸기가 유지하기보다 <strong>${multiple}배</strong> 높은 당첨률 기록 중!`;
-      } else {
-        badge.innerHTML = `💡 이론적 확률: 바꾸기(66.7%) = 유지하기(33.3%)의 정확히 2.0배!`;
-      }
-    }
-
-    function formatMathProb(wins, total) {
-      if (total === 0) return { num: 0, denom: 0, sym: '=', percent: '0', rawRatio: 0 };
-      const raw = wins / total;
-      const pct = raw * 100;
-      const rounded = Math.round(pct * 10) / 10;
-      const isExact = Math.abs(pct - rounded) < 0.0001;
+      const exactPct = (wins / total) * 100;
+      const rounded1 = Math.round(exactPct * 10) / 10;
+      // 소수 첫째 자리에서 정확히 나누어떨어지는 유한소수면 '=', 순환/반올림이면 '≈'
+      const isExact = Math.abs(exactPct - rounded1) < 1e-7;
       return {
         num: wins,
-        denom: total,
+        den: total,
         sym: isExact ? '=' : '≈',
-        percent: rounded.toFixed(1),
-        rawRatio: raw
+        pctText: rounded1.toFixed(1) + '%',
+        pctNum: exactPct
       };
     }
 
 
-    // -------------------------------------------------------------
-    // 8. 대수의 법칙 수렴 그래프 (Canvas Rendering)
-    // -------------------------------------------------------------
-    function drawConvergenceGraph() {
-      const cvs = document.getElementById('convergenceCanvas');
-      const ctx = cvs.getContext('2d');
-      const rect = cvs.getBoundingClientRect();
-      cvs.width = rect.width * window.devicePixelRatio;
-      cvs.height = rect.height * window.devicePixelRatio;
-      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    // =============================================================
+    // 7. 초기화 및 뷰 전환
+    // =============================================================
+    window.addEventListener('DOMContentLoaded', () => {
+      loadSavedConfig();
 
-      const w = rect.width;
-      const h = rect.height;
+      // 홈 히어로 일러스트 삽입
+      document.getElementById('lobbyHeroIllust').innerHTML = `
+        <div style="width:105px;height:75px;">${getCarSVG()}</div>
+        <div style="width:76px;height:76px;">${getMontySVG('normal')}</div>
+        <div style="width:92px;height:75px;">${getGoatSVG()}</div>
+      `;
 
-      ctx.clearRect(0, 0, w, h);
+      // 통계 공통 템플릿 마운트 (관전자 뷰 & 1인 실험실 뷰)
+      const tpl = document.getElementById('sharedStatsTemplate');
+      document.getElementById('watcherSharedStatsMount').appendChild(tpl.content.cloneNode(true));
+      document.getElementById('labSharedStatsMount').appendChild(tpl.content.cloneNode(true));
 
-      // 이론 기준선 66.7% (2/3)
-      const y66 = h - (h * (2 / 3));
-      ctx.beginPath();
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = '#818cf8';
-      ctx.lineWidth = 1.5;
-      ctx.moveTo(0, y66);
-      ctx.lineTo(w, y66);
-      ctx.stroke();
+      // 키보드 단축키 연결 (전자칠판 리모컨 / 키보드 지원)
+      window.addEventListener('keydown', handleKeyShortcuts);
 
-      // 이론 기준선 33.3% (1/3)
-      const y33 = h - (h * (1 / 3));
-      ctx.beginPath();
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = '#64748b';
-      ctx.lineWidth = 1.5;
-      ctx.moveTo(0, y33);
-      ctx.lineTo(w, y33);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      // URL 파라미터(?room=1234&view=watcher)로 QR 접속 시 즉시 관전자 투시 화면 직행!
+      const params = new URLSearchParams(window.location.search);
+      const qRoom = params.get('room');
+      const qView = params.get('view');
+      if (qRoom && /^\d{4}$/.test(qRoom) && qView === 'watcher') {
+        enterWatcherMode(qRoom);
+      }
+    });
 
-      const pts = stats.history;
-      if (pts.length < 2) return;
-
-      const step = w / Math.max(pts.length - 1, 20);
-
-      // 바꿈 곡선 (하늘색)
-      ctx.beginPath();
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 2.5;
-      pts.forEach((pt, i) => {
-        const x = i * step;
-        const y = h - (h * pt.switchRatio);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-
-      // 유지 곡선 (회색)
-      ctx.beginPath();
-      ctx.strokeStyle = '#94a3b8';
-      ctx.lineWidth = 2;
-      pts.forEach((pt, i) => {
-        const x = i * step;
-        const y = h - (h * pt.stayRatio);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-    }
-
-
-    // -------------------------------------------------------------
-    // 9. 사회자 몬티 리액션 & 밈 연출 (Take the L & W)
-    // -------------------------------------------------------------
-    function updateHostDialogue(text) {
-      document.getElementById('hostSpeechBubble').textContent = text;
-    }
-
-    function resetHostAvatar() {
-      const box = document.getElementById('hostAvatar');
-      box.className = 'host-avatar-box';
-      document.getElementById('hostEmoji').textContent = '🤵';
-    }
-
-    function setHostTakeTheL() {
-      const box = document.getElementById('hostAvatar');
-      box.className = 'host-avatar-box take-the-l';
-      document.getElementById('hostEmoji').textContent = '🤦‍♂️';
-    }
-
-    function setHostVictoryW() {
-      const box = document.getElementById('hostAvatar');
-      box.className = 'host-avatar-box victory-w';
-      document.getElementById('hostEmoji').textContent = '🏆';
-    }
-
-
-    // -------------------------------------------------------------
-    // 10. 네비게이션 & 교사용 히든 설정
-    // -------------------------------------------------------------
-    function showView(viewId) {
-      document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+    function switchView(viewId) {
+      document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
       document.getElementById(viewId).classList.add('active');
-      document.getElementById('btnHomeNav').style.display = (viewId === 'gameView') ? 'flex' : 'none';
+      document.body.className = '';
+
+      const isHome = (viewId === 'homeView');
+      document.getElementById('btnHeaderHome').style.display = isHome ? 'none' : 'inline-flex';
+      document.getElementById('btnHeaderReset').style.display =
+        (appMode === 'STAGE_HOST' || appMode === 'SOLO_LAB') ? 'inline-flex' : 'none';
+      document.getElementById('headerRoomChip').style.display =
+        (appMode === 'STAGE_HOST' || appMode === 'WATCHER') ? 'inline-flex' : 'none';
     }
 
-    function startSoloMode() {
-      showView('gameView');
-      initRound();
-      drawConvergenceGraph();
+    // 1) 도전자 무대 열기 (전자칠판 / 짝꿍 도전자)
+    function enterStageHostMode() {
+      sfx.pop();
+      stopVisualAutoRun();
+      appMode = 'STAGE_HOST';
+      watcherCount = 0;
+
+      const roomCode = String(Math.floor(1000 + Math.random() * 9000));
+      document.getElementById('labFastToolbar').style.display = 'none';
+      document.getElementById('labStatsContainer').style.display = 'none';
+      document.getElementById('btnStageInvite').style.display = 'inline-flex';
+
+      switchView('stageView');
+      resetSessionData(false);
+
+      syncEngine.start(roomCode, 'HOST', null, (cnt) => {
+        watcherCount = cnt;
+        updateHeaderRoomBadge();
+      });
+      updateHeaderRoomBadge();
+      syncEngine.broadcast(buildSyncPayload());
+
+      // 시작하자마자 관전자 초대 코드/QR 모달을 띄워주어 교실 연결 편의성 극대화
+      openRoomShareModal();
     }
 
-    function startPairMode() {
-      showView('gameView');
-      document.getElementById('connectionBadge').style.display = 'flex';
-      initRound();
-      drawConvergenceGraph();
+    // 2) 관전자 투시 화면 입장
+    function enterWatcherModeFromInput() {
+      const code = document.getElementById('joinRoomInput').value.trim();
+      if (!/^\d{4}$/.test(code)) {
+        alert('전자칠판(또는 도전자 화면)에 표시된 4자리 숫자 방 코드를 입력해 주세요!');
+        document.getElementById('joinRoomInput').focus();
+        return;
+      }
+      enterWatcherMode(code);
     }
 
-    function goHome() {
-      sound.playClick();
-      showView('welcomeView');
+    function enterWatcherMode(roomCode) {
+      sfx.pop();
+      stopVisualAutoRun();
+      if (watcherReportTimer) { clearTimeout(watcherReportTimer); watcherReportTimer = null; }
+      closeFinalReportModal();
+      appMode = 'WATCHER';
+      watcherSynced = false;
+
+      switchView('watcherView');
+      document.getElementById('watcherRoomLabel').textContent = `방 코드 ${roomCode} · 무대 신호 연결 대기 중...`;
+
+      // 호스트의 실제 정답(carDoor)이 도착하기 전까지는 가짜 정답을 노출하지 않고 대기 화면 표시
+      session.trials = [];
+      session.round = 1;
+      session.phase = Phase.PICK_FIRST;
+      renderWatcherView();
+
+      syncEngine.start(roomCode, 'WATCHER', (remotePayload) => {
+        applyRemoteStateToWatcher(remotePayload);
+      }, null);
+      updateHeaderRoomBadge();
     }
 
-    // 타이틀 5회 연속 클릭 시 교사용 관리자 모달 열림 (학생에게는 완전 은닉)
-    let brandClickCount = 0;
-    let brandTimer = null;
-    function handleBrandClick() {
-      brandClickCount++;
-      clearTimeout(brandTimer);
-      brandTimer = setTimeout(() => { brandClickCount = 0; }, 1500);
-      if (brandClickCount >= 5) {
-        brandClickCount = 0;
-        document.getElementById('hiddenAdminModal').classList.add('active');
+    // 3) 1인 자유 & 초고속 검증 실험실
+    function enterSoloLabMode() {
+      sfx.pop();
+      stopVisualAutoRun();
+      syncEngine.cleanup();
+      appMode = 'SOLO_LAB';
+
+      document.getElementById('labFastToolbar').style.display = 'flex';
+      document.getElementById('labStatsContainer').style.display = 'flex';
+      document.getElementById('btnStageInvite').style.display = 'none';
+
+      switchView('stageView');
+      resetSessionData(false);
+      renderSharedStats(document.getElementById('labSharedStatsMount'));
+      drawLabConvergenceChart();
+    }
+
+    function returnToHome() {
+      sfx.pop();
+      stopVisualAutoRun();
+      if (watcherReportTimer) { clearTimeout(watcherReportTimer); watcherReportTimer = null; }
+      closeFinalReportModal();
+      syncEngine.cleanup();
+      appMode = 'HOME';
+      watcherSynced = false;
+      // URL 쿼리 정리 (file:// 및 https:// 모두 안전하게 처리)
+      if (window.location.search) {
+        try {
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.search = '';
+          window.history.replaceState({}, '', cleanUrl.toString());
+        } catch (e) {}
+      }
+      switchView('homeView');
+    }
+
+    function updateHeaderRoomBadge() {
+      const txt = document.getElementById('headerRoomText');
+      if (!syncEngine.roomCode) return;
+      if (appMode === 'STAGE_HOST') {
+        txt.textContent = `방 ${syncEngine.roomCode} · 👀 관전자 ${watcherCount}명`;
+      } else if (appMode === 'WATCHER') {
+        txt.textContent = watcherSynced
+          ? `방 ${syncEngine.roomCode} · 실시간 투시 중`
+          : `방 ${syncEngine.roomCode} · 연결 대기 중`;
       }
     }
-    function closeAdminModal() {
-      document.getElementById('hiddenAdminModal').classList.remove('active');
+
+
+    // =============================================================
+    // 8. 도전자 무대 게임 진행 로직 (정답 철저 은닉 + 관전자 실시간 브로드캐스트)
+    // =============================================================
+    function setupNewRound(roundNum) {
+      session.round = roundNum;
+      session.phase = Phase.PICK_FIRST;
+      session.carDoor = Math.floor(Math.random() * 3) + 1;
+      session.firstPick = null;
+      session.hostDoor = null;
+      session.finalPick = null;
+      session.isSwitched = null;
+      session.isWin = null;
+
+      document.body.className = '';
+      renderStageView('normal', pickLine(MONTY_LINES.start));
+      broadcastIfHost();
     }
-    function saveAdminSettings() {
-      closeAdminModal();
+
+    function handleStageDoorTap(doorNum) {
+      if (appMode !== 'STAGE_HOST' && appMode !== 'SOLO_LAB') return;
+      if (autoRunTimer) return; // 초고속 자동 실행 중에는 수동 터치 잠금
+
+      // 1단계: 첫 번째 문 선택
+      if (session.phase === Phase.PICK_FIRST) {
+        sfx.pop(740);
+        session.firstPick = doorNum;
+        session.phase = Phase.SUSPENSE;
+        renderStageView('normal', `${doorNum}번 문을 선택했습니다! 자, 제가 남은 문 중 염소가 있는 문을 하나 열어보겠습니다...`);
+        broadcastIfHost();
+
+        setTimeout(() => {
+          if (session.phase !== Phase.SUSPENSE) return;
+          revealGoatByMonty();
+        }, 460);
+        return;
+      }
+
+      // 2단계: 사회자가 염소를 연 상태에서 문을 직접 터치하여 유지/바꾸기 결정!
+      if (session.phase === Phase.HOST_OPENED) {
+        if (doorNum === session.hostDoor) return; // 이미 열린 염소 문은 클릭 무시
+        const switched = (doorNum !== session.firstPick);
+        commitStageDecision(switched);
+      }
+    }
+
+    function revealGoatByMonty() {
+      const goatDoors = [1, 2, 3].filter(d => d !== session.firstPick && d !== session.carDoor);
+      session.hostDoor = goatDoors[Math.floor(Math.random() * goatDoors.length)];
+      session.phase = Phase.HOST_OPENED;
+
+      sfx.doorCreak();
+      const remainingDoor = [1, 2, 3].find(d => d !== session.firstPick && d !== session.hostDoor);
+      const lineFn = pickLine(MONTY_LINES.goatOpen);
+      renderStageView('normal', lineFn(session.hostDoor, remainingDoor));
+      broadcastIfHost();
+    }
+
+    function commitStageDecision(switched) {
+      if (session.phase !== Phase.HOST_OPENED) return;
+
+      const remainingDoor = [1, 2, 3].find(d => d !== session.firstPick && d !== session.hostDoor);
+      session.isSwitched = switched;
+      session.finalPick = switched ? remainingDoor : session.firstPick;
+      session.isWin = (session.finalPick === session.carDoor);
+      session.phase = Phase.REVEALED;
+
+      session.streak = session.isWin ? (session.streak + 1) : 0;
+
+      // 기록 저장
+      session.trials.push({
+        round: session.round,
+        carDoor: session.carDoor,
+        firstPick: session.firstPick,
+        hostDoor: session.hostDoor,
+        finalPick: session.finalPick,
+        isSwitched: session.isSwitched,
+        isWin: session.isWin
+      });
+
+      // 승패 사운드 및 시각 연출
+      let pose = 'normal';
+      let line = '';
+      if (session.isWin) {
+        pose = 'win';
+        line = switched ? pickLine(MONTY_LINES.winSwitch) : pickLine(MONTY_LINES.winStay);
+        if (session.streak >= 2) line = `🔥 ${session.streak}연속 자동차 당첨!! ` + line;
+        document.body.className = 'fx-win screen-shake';
+        sfx.fanfare();
+        burstConfetti(85);
+      } else {
+        pose = 'lose'; // Take the L 댄스 발동!
+        line = switched ? pickLine(MONTY_LINES.loseSwitch) : pickLine(MONTY_LINES.loseStay);
+        document.body.className = 'fx-lose screen-shake';
+        sfx.goatLose();
+      }
+      setTimeout(() => document.body.classList.remove('screen-shake'), 450);
+
+      renderStageView(pose, line);
+
+      if (appMode === 'SOLO_LAB') {
+        renderSharedStats(document.getElementById('labSharedStatsMount'));
+        drawLabConvergenceChart();
+      }
+      broadcastIfHost();
+    }
+
+    function advanceNextRound() {
+      sfx.pop();
+      // 도전자 무대(20회 제한 챌린지)에서 마지막 라운드를 마친 경우 성적표 오픈!
+      if (appMode === 'STAGE_HOST' && session.trials.length >= appConfig.maxRounds) {
+        openFinalReportModal();
+        return;
+      }
+      setupNewRound(session.round + 1);
+    }
+
+    function confirmResetSession() {
+      if (session.trials.length > 0 && !confirm('현재까지의 실험 기록을 모두 지우고 1라운드부터 새로 시작할까요?')) {
+        return;
+      }
+      resetSessionData(true);
+    }
+
+    function resetSessionData(playSound = true) {
+      if (playSound) sfx.pop();
+      stopVisualAutoRun();
+      session.trials = [];
+      session.streak = 0;
+      if (appConfig.maxRounds < 5) appConfig.maxRounds = 20;
+      setupNewRound(1);
+
+      if (appMode === 'SOLO_LAB') {
+        renderSharedStats(document.getElementById('labSharedStatsMount'));
+        drawLabConvergenceChart();
+      } else if (appMode === 'WATCHER') {
+        renderWatcherView();
+      }
+    }
+
+    function buildSyncPayload() {
+      return {
+        maxRounds: appConfig.maxRounds,
+        snackCutPct: appConfig.snackCutPct,
+        round: session.round,
+        phase: session.phase,
+        carDoor: session.carDoor,
+        firstPick: session.firstPick,
+        hostDoor: session.hostDoor,
+        finalPick: session.finalPick,
+        isSwitched: session.isSwitched,
+        isWin: session.isWin,
+        trials: session.trials
+      };
+    }
+
+    function broadcastIfHost() {
+      if (appMode === 'STAGE_HOST') {
+        syncEngine.broadcast(buildSyncPayload());
+      }
     }
 
 
-    // -------------------------------------------------------------
-    // 11. 키보드 단축키
-    // -------------------------------------------------------------
-    window.addEventListener('keydown', (e) => {
-      if (currentState === GameState.FAST_RUNNING) return;
+    // =============================================================
+    // 9. 도전자 무대 화면 렌더링 (정답 완벽 블라인드 처리!)
+    // =============================================================
+    function renderStageView(montyPose, dialogue) {
+      const maxR = (appMode === 'SOLO_LAB') ? Math.max(appConfig.maxRounds, session.round) : appConfig.maxRounds;
+      document.getElementById('stageRoundBadge').textContent =
+        (appMode === 'SOLO_LAB') ? `실험 ${session.round}회차` : `ROUND ${session.round} / ${maxR}`;
 
-      if (e.key === '1') onDoorSelected(1);
-      if (e.key === '2') onDoorSelected(2);
-      if (e.key === '3') onDoorSelected(3);
+      const winsCount = session.trials.filter(t => t.isWin).length;
+      const neededWins = Math.floor((appConfig.snackCutPct / 100) * appConfig.maxRounds) + 1;
+      document.getElementById('stageScoreBadge').textContent =
+        (appMode === 'STAGE_HOST')
+          ? `🚗 성공 ${winsCount}회 (목표: ${neededWins}승 / ${appConfig.snackCutPct}%↑)`
+          : `🚗 누적 당첨 ${winsCount}회 / 총 ${session.trials.length}회`;
 
-      if (e.key === 'r' || e.key === 'R' || e.key === 'ㄱ') finalizeChoice(true);
-      if (e.key === 's' || e.key === 'S' || e.key === 'ㄴ') finalizeChoice(false);
+      // 상단 20칸 도트 트랙 렌더링
+      const dotsEl = document.getElementById('stageRoundDots');
+      if (appMode === 'STAGE_HOST') {
+        let dotsHtml = '';
+        for (let r = 1; r <= appConfig.maxRounds; r++) {
+          const done = session.trials[r - 1];
+          if (done) {
+            dotsHtml += `<div class="r-dot ${done.isWin ? 'win' : 'lose'}" title="${r}회: ${done.isWin ? '자동차' : '염소'}">${done.isWin ? '🚗' : '·'}</div>`;
+          } else if (r === session.round) {
+            dotsHtml += `<div class="r-dot current">${r}</div>`;
+          } else {
+            dotsHtml += `<div class="r-dot">${r}</div>`;
+          }
+        }
+        dotsEl.innerHTML = dotsHtml;
+      } else {
+        dotsEl.innerHTML = '';
+      }
 
-      if (e.code === 'Space') {
-        if (document.getElementById('nextRoundDeck').style.display === 'flex') {
-          e.preventDefault();
-          nextRound();
+      // 사회자 몬티 SVG 및 댄스 클래스
+      const charBox = document.getElementById('montyCharBox');
+      charBox.className = 'monty-character-wrap' +
+        (montyPose === 'lose' ? ' dance-l' : montyPose === 'win' ? ' dance-w' : '');
+      charBox.innerHTML = getMontySVG(montyPose);
+      document.getElementById('montyDialogueText').textContent = dialogue;
+
+      // 문 3개 렌더링 (핵심: 닫혀있는 문의 정답은 DOM에 절대 넣지 않음!)
+      const remainingDoor = [1, 2, 3].find(d => d !== session.firstPick && d !== session.hostDoor);
+
+      for (let i = 1; i <= 3; i++) {
+        const unit = document.getElementById(`stageDoorUnit${i}`);
+        const room = document.getElementById(`stageDoorRoom${i}`);
+        const svgBox = document.getElementById(`stageDoorSvg${i}`);
+        const cap = document.getElementById(`stageDoorCap${i}`);
+        const pill = document.getElementById(`stageDoorPill${i}`);
+
+        unit.className = 'door-unit';
+        room.className = 'door-room';
+        pill.className = 'door-status-pill';
+        cap.style.display = 'none';
+
+        const isPicked = (session.phase === Phase.REVEALED) ? (session.finalPick === i) : (session.firstPick === i);
+        if (isPicked) unit.classList.add('is-selected');
+        if (session.phase === Phase.SUSPENSE && session.firstPick === i) unit.classList.add('is-shaking');
+
+        // 문 개방 여부 판정
+        const shouldOpen =
+          (session.phase === Phase.HOST_OPENED && session.hostDoor === i) ||
+          (session.phase === Phase.REVEALED);
+
+        if (shouldOpen) {
+          unit.classList.add('is-open');
+          const hasCar = (session.carDoor === i);
+          svgBox.innerHTML = hasCar ? getCarSVG() : getGoatSVG();
+          cap.style.display = 'inline-block';
+          cap.textContent = hasCar ? '🚗 슈퍼카!' : '🐐 염소';
+          if (hasCar) room.classList.add('room-car-glow');
+        } else {
+          // 닫혀 있을 땐 물음표만 렌더링 (정답 스포일러 원천 차단!)
+          svgBox.innerHTML = getMysterySVG();
+        }
+
+        // 하단 안내 캡션
+        if (session.phase === Phase.PICK_FIRST) {
+          pill.textContent = `${i}번 문 선택하기`;
+        } else if (session.phase === Phase.SUSPENSE) {
+          pill.textContent = (session.firstPick === i) ? '👆 내 1차 선택!' : `${i}번 문`;
+          if (session.firstPick === i) pill.classList.add('pill-picked');
+        } else if (session.phase === Phase.HOST_OPENED) {
+          if (session.hostDoor === i) {
+            pill.textContent = '🚪 사회자가 연 염소 문';
+            pill.classList.add('pill-goat-out');
+          } else if (session.firstPick === i) {
+            pill.textContent = '🔒 한번 더 터치하면 유지!';
+            pill.classList.add('pill-picked');
+          } else if (remainingDoor === i) {
+            pill.textContent = `🔄 터치하면 ${i}번으로 변경!`;
+            pill.classList.add('pill-switch-hint');
+          }
+        } else if (session.phase === Phase.REVEALED) {
+          if (session.finalPick === i) {
+            const actWord = session.isSwitched ? '바꿔서' : '유지해서';
+            pill.textContent = session.isWin ? `🎉 ${actWord} 자동차 획득!` : `💥 ${actWord} 염소 꽝!`;
+            pill.classList.add('pill-picked');
+          } else {
+            pill.textContent = (session.carDoor === i) ? '🚗 여기 차가 있었어요!' : '🐐 염소';
+          }
         }
       }
-    });
 
-    window.addEventListener('DOMContentLoaded', () => {
-      initRound();
-      drawConvergenceGraph();
-    });
+      // 하단 결정 버튼 / 다음 판 버튼 전환
+      const decBtns = document.getElementById('stageDecisionBtns');
+      const nextBtns = document.getElementById('stageNextBtns');
+
+      if (session.phase === Phase.HOST_OPENED) {
+        decBtns.style.display = 'flex';
+        nextBtns.style.display = 'none';
+        document.getElementById('btnDecideStay').textContent = `🔒 ${session.firstPick}번 문 그대로 유지 (S)`;
+        document.getElementById('btnDecideSwitch').textContent = `🔄 ${remainingDoor}번 문으로 바꾸기! (R)`;
+      } else if (session.phase === Phase.REVEALED) {
+        decBtns.style.display = 'none';
+        nextBtns.style.display = 'flex';
+        const nextBtn = document.getElementById('btnNextRoundAction');
+        if (appMode === 'STAGE_HOST' && session.trials.length >= appConfig.maxRounds) {
+          nextBtn.textContent = `🏆 ${appConfig.maxRounds}회 완주! 최종 성적표 확인 ➔`;
+        } else {
+          nextBtn.textContent = `다음 라운드 진행 (Space) ➔`;
+        }
+      } else {
+        decBtns.style.display = 'none';
+        nextBtns.style.display = 'none';
+      }
+    }
+
+
+    // =============================================================
+    // 10. 관전자 투시 화면 렌더링 (문 뒤 실제 자동차/염소 100% 실시간 투시!)
+    // =============================================================
+    function applyRemoteStateToWatcher(data) {
+      const prevLen = session.trials.length;
+      watcherSynced = true;
+      appConfig.maxRounds = data.maxRounds || 20;
+      appConfig.snackCutPct = data.snackCutPct || 66.6;
+
+      session.round = data.round;
+      session.phase = data.phase;
+      session.carDoor = data.carDoor;
+      session.firstPick = data.firstPick;
+      session.hostDoor = data.hostDoor;
+      session.finalPick = data.finalPick;
+      session.isSwitched = data.isSwitched;
+      session.isWin = data.isWin;
+      session.trials = Array.isArray(data.trials) ? data.trials : [];
+
+      document.getElementById('watcherRoomLabel').textContent = `방 코드 ${syncEngine.roomCode} · 🟢 실시간 투시 관전 중`;
+      updateHeaderRoomBadge();
+
+      // 도전자 무대에서 새 20회 챌린지로 초기화한 경우 성적표 모달 자동 닫기
+      if (session.trials.length === 0 && session.round === 1 && session.phase === Phase.PICK_FIRST) {
+        if (watcherReportTimer) { clearTimeout(watcherReportTimer); watcherReportTimer = null; }
+        closeFinalReportModal();
+      }
+
+      if (session.trials.length > prevLen && session.phase === Phase.REVEALED) {
+        if (session.isWin) { sfx.fanfare(); burstConfetti(55); }
+        else { sfx.goatLose(); }
+      } else if (session.phase === Phase.HOST_OPENED) {
+        sfx.pop(540);
+      }
+
+      renderWatcherView();
+
+      if (session.trials.length >= appConfig.maxRounds && session.phase === Phase.REVEALED) {
+        if (watcherReportTimer) clearTimeout(watcherReportTimer);
+        watcherReportTimer = setTimeout(() => {
+          if (appMode === 'WATCHER' && session.trials.length >= appConfig.maxRounds) {
+            openFinalReportModal();
+          }
+        }, 900);
+      }
+    }
+
+    function renderWatcherView() {
+      document.getElementById('watcherRoundBadge').textContent = `ROUND ${session.round} / ${appConfig.maxRounds}`;
+
+      const narr = document.getElementById('watcherLiveNarration');
+
+      // 아직 도전자 무대(HOST) 신호를 수신하기 전인 경우
+      if (!watcherSynced) {
+        narr.textContent = `📡 도전자 무대(방 ${syncEngine.roomCode || '----'}) 신호를 수신하는 중입니다... 방 코드를 확인해 주세요!`;
+        for (let i = 1; i <= 3; i++) {
+          const box = document.getElementById(`xrayDoor${i}`);
+          const svgEl = document.getElementById(`xraySvg${i}`);
+          const truthEl = document.getElementById(`xrayTruth${i}`);
+          const actEl = document.getElementById(`xrayAction${i}`);
+          box.className = 'xray-door-box';
+          svgEl.innerHTML = getMysterySVG();
+          truthEl.className = 'xray-truth-tag truth-goat';
+          truthEl.textContent = '무대 연결 대기';
+          actEl.innerHTML = '';
+        }
+        renderSharedStats(document.getElementById('watcherSharedStatsMount'));
+        document.getElementById('watcherQuestSummary').textContent = `도전자 무대 연결 대기 중...`;
+        document.getElementById('watcherQuestFill').style.width = '0%';
+        document.getElementById('watcherRoundHistoryDots').innerHTML = '';
+        return;
+      }
+
+      // 상단 실시간 중계 멘트 (자리의 아이들이 보면서 흥분하는 포인트!)
+      if (session.phase === Phase.PICK_FIRST) {
+        narr.textContent = `👀 도전자가 문을 고르는 중! (쉿! 실제 자동차는 ${session.carDoor}번 문 뒤에 있습니다!)`;
+      } else if (session.phase === Phase.SUSPENSE) {
+        const pickedCar = (session.firstPick === session.carDoor);
+        narr.textContent = `👆 도전자가 ${session.firstPick}번 문(${pickedCar ? '🚗자동차!' : '🐐염소!'})을 골랐습니다!`;
+      } else if (session.phase === Phase.HOST_OPENED) {
+        const pickedCar = (session.firstPick === session.carDoor);
+        narr.textContent = pickedCar
+          ? `💓 도전자의 ${session.firstPick}번 문에 차가 있는데... 과연 유혹을 참고 지킬까요, 바꿀까요?!`
+          : `💓 도전자의 ${session.firstPick}번 문은 염소! 바꾸면 무조건 ${session.carDoor}번 자동차인데 바꿀까요?!`;
+      } else if (session.phase === Phase.REVEALED) {
+        const act = session.isSwitched ? '🔄 바꿔서' : '🔒 유지해서';
+        narr.textContent = session.isWin
+          ? `🎉 도전자가 ${act} ${session.finalPick}번 문 슈퍼카를 획득했습니다!!`
+          : `💥 도전자가 ${act} ${session.finalPick}번 문 염소(꽝)를 뽑았습니다!`;
+      }
+
+      const remainingSwitchDoor = [1, 2, 3].find(d => d !== session.firstPick && d !== session.hostDoor);
+
+      // 엑스레이 문 3개 렌더링 (항상 실제 자동차와 염소 SVG가 훤히 보임!)
+      for (let i = 1; i <= 3; i++) {
+        const box = document.getElementById(`xrayDoor${i}`);
+        const svgEl = document.getElementById(`xraySvg${i}`);
+        const truthEl = document.getElementById(`xrayTruth${i}`);
+        const actEl = document.getElementById(`xrayAction${i}`);
+
+        const hasCar = (session.carDoor === i);
+        box.className = 'xray-door-box' + (hasCar ? ' has-car' : '');
+        svgEl.innerHTML = hasCar ? getCarSVG() : getGoatSVG();
+
+        truthEl.className = 'xray-truth-tag ' + (hasCar ? 'truth-car' : 'truth-goat');
+        truthEl.textContent = hasCar ? '★ 실제 자동차!' : '실제 염소';
+
+        actEl.innerHTML = '';
+        const activeTarget = (session.phase === Phase.REVEALED) ? session.finalPick : session.firstPick;
+        if (activeTarget === i) {
+          box.classList.add('challenger-picked');
+          if (session.phase === Phase.REVEALED) {
+            const badgeBg = session.isWin ? '#F59E0B' : '#EF4444';
+            actEl.innerHTML = `<span style="background:${badgeBg};color:#fff;padding:4px 10px;border-radius:999px;">${session.isSwitched ? '🔄 바꿈' : '🔒 유지'} → 최종 선택!</span>`;
+          } else {
+            actEl.innerHTML = `<span style="background:#38BDF8;color:#0F172A;padding:4px 10px;border-radius:999px;">👆 도전자 1차 선택!</span>`;
+          }
+        } else if (
+          (session.phase === Phase.HOST_OPENED || session.phase === Phase.REVEALED) &&
+          session.hostDoor === i
+        ) {
+          box.classList.add('host-eliminated');
+          actEl.innerHTML = `<span style="background:#475569;color:#E2E8F0;padding:4px 10px;border-radius:999px;">🚪 사회자가 열어줌</span>`;
+        } else if (session.phase === Phase.HOST_OPENED && remainingSwitchDoor === i) {
+          actEl.innerHTML = `<span style="background:rgba(37,99,235,0.35);border:1px solid #60A5FA;color:#BFDBFE;padding:4px 10px;border-radius:999px;">🔄 바꿀 대상 문</span>`;
+        }
+      }
+
+      // 중단: 바꿨을 때 vs 유지했을 때 분수(M/N) & 근삿값(≈) & 누적 아이콘 칩 업데이트
+      renderSharedStats(document.getElementById('watcherSharedStatsMount'));
+
+      // 하단: 20회 챌린지 미션 달성 게이지 & 라운드 히스토리
+      const totalDone = session.trials.length;
+      const totalWins = session.trials.filter(t => t.isWin).length;
+      const overall = calcMathFraction(totalWins, totalDone);
+
+      document.getElementById('watcherQuestSummary').textContent =
+        totalDone === 0
+          ? `아직 완료된 라운드가 없습니다 (목표: ${appConfig.snackCutPct}% 초과)`
+          : `전체 자동차 획득: ${overall.num} / ${overall.den} ${overall.sym} ${overall.pctText}`;
+
+      document.getElementById('watcherQuestFill').style.width = `${Math.min(100, overall.pctNum)}%`;
+      document.getElementById('watcherThresholdPin').style.left = `${appConfig.snackCutPct}%`;
+      document.getElementById('watcherThresholdLabel').style.left = `${appConfig.snackCutPct}%`;
+      document.getElementById('watcherThresholdLabel').textContent = `목표 기준 ${appConfig.snackCutPct}%↑`;
+
+      let histHtml = '';
+      for (let r = 1; r <= appConfig.maxRounds; r++) {
+        const t = session.trials[r - 1];
+        if (t) {
+          histHtml += `<div class="r-dot ${t.isWin ? 'win' : 'lose'}" title="${r}회: ${t.isSwitched ? '바꿈' : '유지'} → ${t.isWin ? '자동차' : '염소'}">${t.isWin ? '🚗' : '🐐'}</div>`;
+        } else if (r === session.round) {
+          histHtml += `<div class="r-dot current">${r}</div>`;
+        } else {
+          histHtml += `<div class="r-dot">${r}</div>`;
+        }
+      }
+      document.getElementById('watcherRoundHistoryDots').innerHTML = histHtml;
+    }
+
+
+    // =============================================================
+    // 11. 공통 통계 보드 렌더링 (세로 분수 M/N + ≈ 퍼센트 + 자동차/염소 칩 트레이)
+    // =============================================================
+    function renderSharedStats(container) {
+      if (!container) return;
+      const swTrials = session.trials.filter(t => t.isSwitched === true);
+      const stTrials = session.trials.filter(t => t.isSwitched === false);
+
+      const swWins = swTrials.filter(t => t.isWin).length;
+      const stWins = stTrials.filter(t => t.isWin).length;
+
+      const swMath = calcMathFraction(swWins, swTrials.length);
+      const stMath = calcMathFraction(stWins, stTrials.length);
+
+      container.querySelector('.js-sw-num').textContent = swMath.num;
+      container.querySelector('.js-sw-den').textContent = swMath.den;
+      container.querySelector('.js-sw-sym').textContent = swMath.sym;
+      container.querySelector('.js-sw-pct').textContent = swMath.pctText;
+
+      container.querySelector('.js-st-num').textContent = stMath.num;
+      container.querySelector('.js-st-den').textContent = stMath.den;
+      container.querySelector('.js-st-sym').textContent = stMath.sym;
+      container.querySelector('.js-st-pct').textContent = stMath.pctText;
+
+      // 실시간 아이콘 칩 렌더링
+      const swTray = container.querySelector('.js-sw-chips');
+      if (swTrials.length === 0) {
+        swTray.innerHTML = `<span style="font-size: 0.82rem; color: var(--ink-muted); padding: 4px;">아직 '바꾸기' 기록이 없습니다.</span>`;
+      } else {
+        swTray.innerHTML = swTrials.map(t =>
+          `<span class="outcome-chip ${t.isWin ? 'chip-car' : 'chip-goat'}">#${t.round} ${t.isWin ? '🚗 자동차' : '🐐 염소'}</span>`
+        ).join('');
+      }
+
+      const stTray = container.querySelector('.js-st-chips');
+      if (stTrials.length === 0) {
+        stTray.innerHTML = `<span style="font-size: 0.82rem; color: var(--ink-muted); padding: 4px;">아직 '유지하기' 기록이 없습니다.</span>`;
+      } else {
+        stTray.innerHTML = stTrials.map(t =>
+          `<span class="outcome-chip ${t.isWin ? 'chip-car' : 'chip-goat'}">#${t.round} ${t.isWin ? '🚗 자동차' : '🐐 염소'}</span>`
+        ).join('');
+      }
+    }
+
+
+    // =============================================================
+    // 12. 1인 실험실 전용: 무대 문 동작이 실제로 보이는 초고속 2단계 자동 실험!
+    // =============================================================
+    let autoRunTimer = null;
+
+    function startVisualAutoRun(strategy, totalCount) {
+      if (autoRunTimer) return;
+      document.getElementById('btnFastSwitch20').disabled = true;
+      document.getElementById('btnFastStay20').disabled = true;
+      document.getElementById('btnFastStop').style.display = 'inline-flex';
+
+      let done = 0;
+      let subStep = 0; // 0: 문 선택 & 염소 개방, 1: 바꾸기/유지 이동 & 최종 공개
+
+      autoRunTimer = setInterval(() => {
+        if (subStep === 0) {
+          // 새 라운드 세팅 후 즉시 무작위 1차 선택 + 사회자 염소 개방까지 무대에 표시!
+          if (session.phase === Phase.REVEALED) {
+            session.round++;
+          }
+          session.carDoor = Math.floor(Math.random() * 3) + 1;
+          session.firstPick = Math.floor(Math.random() * 3) + 1;
+          const goats = [1, 2, 3].filter(d => d !== session.firstPick && d !== session.carDoor);
+          session.hostDoor = goats[Math.floor(Math.random() * goats.length)];
+          session.phase = Phase.HOST_OPENED;
+
+          sfx.pop(860);
+          renderStageView('normal', `⚡ 자동 실험 (${done + 1}/${totalCount}): ${session.firstPick}번 선택 → 사회자가 ${session.hostDoor}번 염소 제거!`);
+          subStep = 1;
+        } else {
+          // 바꾸기 또는 유지하기 실제 수행 및 문 전체 개방!
+          const doSwitch = (strategy === 'SWITCH');
+          const rem = [1, 2, 3].find(d => d !== session.firstPick && d !== session.hostDoor);
+          session.isSwitched = doSwitch;
+          session.finalPick = doSwitch ? rem : session.firstPick;
+          session.isWin = (session.finalPick === session.carDoor);
+          session.phase = Phase.REVEALED;
+
+          session.trials.push({
+            round: session.round,
+            carDoor: session.carDoor,
+            firstPick: session.firstPick,
+            hostDoor: session.hostDoor,
+            finalPick: session.finalPick,
+            isSwitched: session.isSwitched,
+            isWin: session.isWin
+          });
+
+          sfx.pop(session.isWin ? 1050 : 340);
+          renderStageView(
+            session.isWin ? 'win' : 'lose',
+            `⚡ 자동 실험 (${done + 1}/${totalCount}): ${doSwitch ? '바꾸기' : '유지하기'} → ${session.isWin ? '🚗 자동차 당첨!' : '🐐 염소 꽝!'}`
+          );
+          renderSharedStats(document.getElementById('labSharedStatsMount'));
+          drawLabConvergenceChart();
+
+          done++;
+          subStep = 0;
+
+          if (done >= totalCount) {
+            stopVisualAutoRun();
+            sfx.fanfare();
+            burstConfetti(70);
+          }
+        }
+      }, 130); // 1판당 0.26초 (선택 과정과 문 개방이 눈으로 선명하게 보임!)
+    }
+
+    function stopVisualAutoRun() {
+      if (autoRunTimer) {
+        clearInterval(autoRunTimer);
+        autoRunTimer = null;
+      }
+      const b1 = document.getElementById('btnFastSwitch20');
+      const b2 = document.getElementById('btnFastStay20');
+      const bs = document.getElementById('btnFastStop');
+      if (b1) b1.disabled = false;
+      if (b2) b2.disabled = false;
+      if (bs) bs.style.display = 'none';
+    }
+
+    // 1인 실험실 큰 수의 법칙 수렴 그래프
+    function drawLabConvergenceChart() {
+      const cvs = document.getElementById('labChartCanvas');
+      if (!cvs || cvs.offsetWidth === 0) return;
+      const ctx = cvs.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const w = cvs.clientWidth;
+      const h = cvs.clientHeight;
+      cvs.width = w * dpr;
+      cvs.height = h * dpr;
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, w, h);
+
+      const padX = 36, padY = 16;
+      const plotW = w - padX - 14;
+      const plotH = h - padY * 2;
+
+      // 기준 점선 (66.7%, 33.3%)
+      [ { r: 2/3, col: '#2563EB', lbl: '66.7%' }, { r: 1/3, col: '#94A3B8', lbl: '33.3%' } ].forEach(g => {
+        const y = padY + plotH * (1 - g.r);
+        ctx.save();
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = g.col;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(padX + plotW, y); ctx.stroke();
+        ctx.fillStyle = g.col;
+        ctx.font = 'bold 11px Pretendard, sans-serif';
+        ctx.fillText(g.lbl, 4, y + 4);
+        ctx.restore();
+      });
+
+      if (session.trials.length === 0) return;
+
+      let swW = 0, swN = 0, stW = 0, stN = 0;
+      const swPts = [], stPts = [];
+      session.trials.forEach((t, idx) => {
+        if (t.isSwitched) { swN++; if (t.isWin) swW++; swPts.push({ i: idx, v: swW / swN }); }
+        else { stN++; if (t.isWin) stW++; stPts.push({ i: idx, v: stW / stN }); }
+      });
+
+      const maxIdx = Math.max(session.trials.length - 1, 19);
+      const drawSeries = (pts, color) => {
+        if (pts.length === 0) return;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        pts.forEach((p, k) => {
+          const x = padX + (p.i / maxIdx) * plotW;
+          const y = padY + plotH * (1 - p.v);
+          if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      };
+      drawSeries(swPts, '#2563EB');
+      drawSeries(stPts, '#64748B');
+    }
+
+
+    // =============================================================
+    // 13. 모달 제어 (QR 초대, 20회 성적표 & 목표 달성 인증서, 교사 히든 설정)
+    // =============================================================
+    const PUBLIC_PAGES_URL = 'https://getbetterwithu.github.io/monty-hall/';
+
+    function getWatcherShareUrl(forExternalDevice = false) {
+      if (forExternalDevice && window.location.protocol === 'file:') {
+        return `${PUBLIC_PAGES_URL}?room=${syncEngine.roomCode}&view=watcher`;
+      }
+      const u = new URL(window.location.href);
+      u.search = '';
+      u.hash = '';
+      u.searchParams.set('room', syncEngine.roomCode);
+      u.searchParams.set('view', 'watcher');
+      return u.toString();
+    }
+
+    function openRoomShareModal() {
+      if (!syncEngine.roomCode) return;
+      document.getElementById('shareModalRoomCode').textContent = syncEngine.roomCode;
+      const qrBox = document.getElementById('shareModalQrContainer');
+      qrBox.innerHTML = '';
+      const qrUrl = getWatcherShareUrl(true);
+      if (typeof qrcode === 'function') {
+        try {
+          const qr = qrcode(0, 'M');
+          qr.addData(qrUrl);
+          qr.make();
+          qrBox.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 2 });
+        } catch (e) {
+          qrBox.textContent = qrUrl;
+        }
+      } else {
+        qrBox.textContent = qrUrl;
+      }
+      document.getElementById('roomShareModal').classList.add('open');
+    }
+    function closeRoomShareModal() {
+      document.getElementById('roomShareModal').classList.remove('open');
+    }
+
+    function openCompanionWatcherPopup() {
+      const url = getWatcherShareUrl(false);
+      window.open(url, '_blank', 'width=980,height=880');
+    }
+
+    function copyWatcherInviteLink() {
+      const url = getWatcherShareUrl(true);
+      navigator.clipboard.writeText(url).then(() => {
+        alert('관전자 투시 화면 링크가 복사되었습니다!');
+      }).catch(() => {
+        prompt('아래 주소를 복사하세요:', url);
+      });
+    }
+
+    // 20회 종료 최종 리포트 & 목표 달성 판정 모달
+    function openFinalReportModal() {
+      const total = session.trials.length;
+      const wins = session.trials.filter(t => t.isWin).length;
+      const overall = calcMathFraction(wins, total);
+
+      const swTrials = session.trials.filter(t => t.isSwitched);
+      const stTrials = session.trials.filter(t => !t.isSwitched);
+      const swMath = calcMathFraction(swTrials.filter(t => t.isWin).length, swTrials.length);
+      const stMath = calcMathFraction(stTrials.filter(t => t.isWin).length, stTrials.length);
+
+      const passedGoal = (overall.pctNum > appConfig.snackCutPct);
+      const ticket = document.getElementById('finalSnackTicket');
+      ticket.className = 'report-ticket' + (passedGoal ? '' : ' failed');
+
+      document.getElementById('finalTicketBadge').textContent = passedGoal ? '🏆🎉' : '🐐💦';
+      document.getElementById('finalTicketTitle').textContent = passedGoal
+        ? `20회 챌린지 미션 성공!! (${appConfig.snackCutPct}% 돌파!)`
+        : `아깝다! 목표 기준(${appConfig.snackCutPct}%) 미달성!`;
+      document.getElementById('finalTicketFormula').textContent =
+        `최종 정답률: ${overall.num} / ${overall.den} ${overall.sym} ${overall.pctText}`;
+
+      const nowStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const verifyTxt = (watcherCount > 0 || appMode === 'WATCHER')
+        ? `✅ 실시간 관전자 검증됨 (방 ${syncEngine.roomCode || '-'})`
+        : `단독 무대 기록`;
+      document.getElementById('finalTicketMeta').textContent = `${verifyTxt} · 완료 시각 ${nowStr}`;
+
+      document.getElementById('finalSwitchSummary').textContent =
+        swTrials.length ? `${swMath.num} / ${swMath.den} ${swMath.sym} ${swMath.pctText}` : '0회 시행';
+      document.getElementById('finalStaySummary').textContent =
+        stTrials.length ? `${stMath.num} / ${stMath.den} ${stMath.sym} ${stMath.pctText}` : '0회 시행';
+
+      document.getElementById('finalHostActions').style.display = (appMode === 'WATCHER') ? 'none' : 'flex';
+      document.getElementById('finalReportModal').classList.add('open');
+
+      if (passedGoal) burstConfetti(120);
+    }
+
+    function closeFinalReportModal() {
+      document.getElementById('finalReportModal').classList.remove('open');
+    }
+
+    // 교사용 히든 관리자 모달 (로고 5회 연속 클릭)
+    let secretTapCount = 0;
+    let secretTapTimer = null;
+    function onBrandSecretClick() {
+      secretTapCount++;
+      clearTimeout(secretTapTimer);
+      secretTapTimer = setTimeout(() => { secretTapCount = 0; }, 1400);
+      if (secretTapCount >= 5) {
+        secretTapCount = 0;
+        document.getElementById('cfgMaxRounds').value = appConfig.maxRounds;
+        document.getElementById('cfgSnackCut').value = appConfig.snackCutPct;
+        document.getElementById('cfgFirebaseUrl').value = appConfig.firebaseUrl;
+        document.getElementById('teacherAdminModal').classList.add('open');
+      }
+    }
+    function closeTeacherAdminModal() {
+      document.getElementById('teacherAdminModal').classList.remove('open');
+    }
+    function updateLobbyRuleBanner() {
+      const minWins = Math.floor((appConfig.snackCutPct / 100) * appConfig.maxRounds) + 1;
+      const el = document.getElementById('lobbySnackRuleText');
+      if (el) {
+        el.textContent =
+          `🎯 ${appConfig.maxRounds}회 챌린지 미션: 정답률 ${appConfig.snackCutPct}% 초과 (${appConfig.maxRounds}번 중 ${minWins}번 이상 자동차 획득!) 도전!`;
+      }
+    }
+
+    function saveTeacherAdminConfig() {
+      const mr = parseInt(document.getElementById('cfgMaxRounds').value, 10);
+      const sc = parseFloat(document.getElementById('cfgSnackCut').value);
+      const fb = document.getElementById('cfgFirebaseUrl').value.trim();
+      if (mr >= 5 && mr <= 100) appConfig.maxRounds = mr;
+      if (sc >= 10 && sc <= 95) appConfig.snackCutPct = sc;
+      appConfig.firebaseUrl = fb;
+      localStorage.setItem('monty_teacher_cfg_v3', JSON.stringify(appConfig));
+
+      updateLobbyRuleBanner();
+      closeTeacherAdminModal();
+      if (appMode === 'STAGE_HOST') {
+        renderStageView('normal', document.getElementById('montyDialogueText').textContent);
+        broadcastIfHost();
+      }
+    }
+    function loadSavedConfig() {
+      try {
+        const raw = localStorage.getItem('monty_teacher_cfg_v3');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.maxRounds) appConfig.maxRounds = parsed.maxRounds;
+          if (parsed.snackCutPct) appConfig.snackCutPct = parsed.snackCutPct;
+          if (parsed.firebaseUrl) appConfig.firebaseUrl = parsed.firebaseUrl;
+        }
+      } catch (e) {}
+      updateLobbyRuleBanner();
+    }
+
+    // 키보드 단축키 (1, 2, 3 문 선택 / R 바꾸기 / S 유지 / Space 다음 판)
+    function handleKeyShortcuts(e) {
+      if (document.querySelector('.modal-backdrop.open')) return;
+      if (appMode !== 'STAGE_HOST' && appMode !== 'SOLO_LAB') return;
+      if (autoRunTimer) return;
+
+      if (e.key === '1' || e.key === '2' || e.key === '3') {
+        handleStageDoorTap(Number(e.key));
+      } else if (e.key === 'r' || e.key === 'R' || e.key === 'ㄱ') {
+        commitStageDecision(true);
+      } else if (e.key === 's' || e.key === 'S' || e.key === 'ㄴ') {
+        commitStageDecision(false);
+      } else if (e.code === 'Space' && session.phase === Phase.REVEALED) {
+        e.preventDefault();
+        advanceNextRound();
+      }
+    }
   </script>
 </body>
 </html>
